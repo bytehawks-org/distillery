@@ -13,16 +13,16 @@ package:
         major_version: 3.6
         patch_version: 0
         full_version: 3.6.0
-    website: https://www.openssl.org/
+    website: https://www.{{ name }}.org/
     git:
-      repo: https://github.com/openssl/openssl/
-      release_url_name_template: "openssl-{{ full_version }}.tar.gz"
-      release_download_url_template: "{{ git.repo }}/releases/tag/openssl-{{ full_version }}/openssl-{{ full_version }}.tar.gz"
+      repo: https://github.com/{{ name }}/{{ name }}/
+      release_url_name_template: "{{ name }}-{{ full_version }}.tar.gz"
+      release_download_url_template: "{{ git.repo }}/releases/tag/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
     commands:
       pre: |
-        wget -O {{ config.default_download_path }}/openssl-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
-        tar -xzf {{ config.default_download_path }}/openssl-{{ full_version }}.tar.gz -C {{ config.default_src_path }}
-        cd {{ config.default_src_path }}/openssl-{{ full_version }}
+        wget -O {{ config.default_download_path }}/{{ name }}-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
+        tar -xzf {{ config.default_download_path }}/{{ name }}-{{ full_version }}.tar.gz -C {{ config.default_src_path }}
+        cd {{ config.default_src_path }}/{{ name }}-{{ full_version }}
       configure: |
         ./Configure linux-x86_64 \
           --prefix={{ default_prefix }} \
