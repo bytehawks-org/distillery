@@ -21,6 +21,8 @@ package:
     commands:
       pre: |
         wget -O {{ config.default_download_path }}/openssl-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
+        tar -xzf {{ config.default_download_path }}/openssl-{{ full_version }}.tar.gz -C {{ config.default_src_path }}
+        cd {{ config.default_src_path }}/openssl-{{ full_version }}
       configure: |
         ./Configure linux-x86_64 \
           --prefix={{ default_prefix }} \
