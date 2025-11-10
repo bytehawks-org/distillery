@@ -27,11 +27,11 @@ package:
         ./Configure linux-x86_64 \
           --prefix={{ default_prefix }} \
           --openssldir={{ default_prefix }}/etc/ssl \
-          - static \
+          -static \
           no-shared \
           no-tests \
           no-docs
-      make: make -j {{ num_cores }}
+      make: make
       install: make install_sw
     tags:
       - library
