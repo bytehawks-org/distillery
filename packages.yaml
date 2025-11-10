@@ -1,0 +1,72 @@
+package:
+  openssl:
+    variant:
+      - name: [ old-legacy, legacy ]
+        major_version: 3.0
+        patch_version: 18
+        full_version: 3.0.18
+      - name: stable
+        major_version: 3.5
+        patch_version: 4
+        full_version: 3.5.4
+      - name: stream
+        major_version: 3.6
+        patch_version: 0
+        full_version: 3.6.0
+    website: https://www.openssl.org/
+    git:
+      repo: https://github.com/openssl/openssl/
+      release_url_name_template: "openssl-{{ full_version }}.tar.gz"
+      release_download_url_template: "{{ git.repo }}/releases/tag/openssl-{{ full_version }}/openssl-{{ full_version }}.tar.gz"
+    commands:
+      pre: |
+        wget -O {{ config.default_download_path }}/openssl-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
+      configure: |
+        ./Configure linux-x86_64 \
+          --prefix={{ default_prefix }} \
+          --openssldir={{ default_prefix }}/etc/ssl \
+          - static \
+          no-shared \
+          no-tests \
+          no-docs
+      make: make -j {{ num_cores }}
+      install: make install_sw
+    tags:
+      - library
+      - application
+
+#  zlib:
+#    variant:
+#      - name: all
+#        major_version: 1.3
+#        patch_version: 1
+#        full_version: 1.3.1
+#    website: https://zlib.net/
+#    git_repo: https://github.com/madler/zlib
+#    tags:
+#      - library
+#    
+#  pcre2:
+#    variant:
+#      - name: all
+#        major_version: 10
+#        patch_version: 43
+#        full_version: 10.43
+#        website: https://www.pcre.org/
+#    git_repo: https://github.com/PCRE2Project/pcre2
+#    tags:
+#      - library
+#
+#binaries:
+#  nginx:
+#    version: 1.26.2
+#    depends_on: [musl, openssl, zlib, pcre]
+#    configure_flags: "--with-cc=musl-gcc --with-ld-opt=-static"
+#    
+#  postgresql:
+#    version: 16.1
+#    depends_on: [musl, openssl, zlib]
+#    
+#  valkey:
+#    version: 8.0
+#    depends_on: [musl]  # standalone, no deps
