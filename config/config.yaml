@@ -1,0 +1,168 @@
+version: 1.0.0
+schema: "distillery-config"
+
+config:
+  # Global template variables
+  variables:
+    primary_registry_url: "registry.bytehawks.org"
+    primary_registry_namespace: "bytehawks-org"
+    artifact_base_path: "/opt/bytehawks"
+
+  # Defaults
+  defaults:
+    build:
+      variant: "stable"
+      arch: "amd64"
+      cleanup_on_success: true
+      cleanup_on_failure: false
+
+    packaging:
+      format: "tar.gz"
+      generate_checksum: true
+      generate_sbom: true
+      generate_signature: false  # Roadmap
+
+  # Filesystem paths
+  path:
+    base: "{{ variables.artifact_base_path }}"
+    downloads: "{{ path.base }}/tmp"
+    sources: "{{ path.base }}/src"
+    build: "{{ path.base }}/build"
+
+    generated:
+      libraries: "{{ path.base }}/deps"
+      applications: "{{ path.base }}/apps/{{ package.name }}"
+
+  # Build options
+  option:
+    build_user:
+      name: "bh"
+      group: "bh"
+      uid: 1024
+      gid: 1024
+      homedir: "/home/bh"
+      shell: "/bin/bash"
+
+    runtime:
+      tmpfs:
+        enabled: true
+        size: "2g"
+        mount_point: "/tmp"
+
+      fakeroot:
+        enabled: true
+
+      security:
+        no_new_privileges: true
+        drop_capabilities: ["ALL"]
+
+  # Build configuration
+  build:
+    type:
+      container:
+        image_basename: "builda-bar"
+        runtime: "docker"  # or "podman"
+        pull_policy: "if-not-present"
+
+    variant:
+      old-legacy:
+        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
+        metadata:
+          alpine_version: "3.15"
+          musl_version: "1.2.2"
+          kernel: "5.15"
+          arch: "amd64"
+        description: "Legacy infrastructure with long certification cycles"
+        support_until: "2026-12-31"
+
+      legacy:
+        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
+        metadata:
+          alpine_version: "3.20"
+          musl_version: "1.2.5"
+          kernel: "6.6"
+          arch: "amd64"
+        description: "Long-term stable for critical production"
+        support_until: "2028-12-31"
+
+      stable:
+        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
+        metadata:
+          alpine_version: "3.21"
+          musl_version: "1.2.5"
+          kernel: "6.6"
+          arch: "amd64"
+        description: "Current production standard"
+        support_until: "2027-12-31"
+
+      stream:
+        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
+        metadata:
+          alpine_version: "3.22"
+          musl_version: "1.2.5"
+          kernel: "6.12"
+          arch: "amd64"
+        description: "Bleeding edge for R&D and testing"
+        support_until: "rolling"
+
+  # Container registry (for build images)
+  registry:
+    strategy: "primary-with-fallback"
+
+    primary:
+      harbor:
+        public: true
+        url: "registry.bytehawks.org"
+        namespace: "bytehawks-org"
+        username: "${HARBOR_USER}"
+        password: "${HARBOR_PASSWORD}"
+        timeout: 30
+        retry: 3
+
+    fallback:
+      ghcr:
+        public: true
+        url: "ghcr.io"
+        namespace: "bytehawks-org"
+        username: "${GITHUB_ACTOR}"
+        token: "${GITHUB_TOKEN}"
+        timeout: 30
+        retry: 3
+
+  # Artifact repository (for compiled binaries)
+  repository:
+    strategy: "primary-with-fallback"
+
+    primary:
+      nexus:
+        type: "nexus"  # ← Opzionale ma più chiaro
+        url: "https://registry.bytehawks.org/repository"
+        repository: "packages"
+        path_template: "{package}/{major_minor}/{full_version}"
+        username: "${NEXUS_USER}"
+        password: "${NEXUS_PASSWORD}"
+        timeout: 60
+        retry: 3
+
+    fallback:
+      s3:
+        type: "s3"  # ← Opzionale ma più chiaro
+        bucket: "bytehawks-packages"
+        region: "eu-south-1"
+        endpoint: "https://s3.eu-south-1.amazonaws.com"  # ← Opzionale
+        path_template: "{package}/{major_minor}/{full_version}"
+        access_key: "${AWS_ACCESS_KEY_ID}"
+        secret_key: "${AWS_SECRET_ACCESS_KEY}"
+        timeout: 60
+        retry: 3
+
+  # Logging and observability
+  logging:
+    level: "INFO"
+    format: "json"
+    output: "stdout"
+
+  # GitHub integration (upstream monitoring)
+  github:
+    token: "${GITHUB_TOKEN}"
+    api_url: "https://api.github.com"

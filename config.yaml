@@ -1,7 +1,0 @@
-config: 
-  default_download_path: /tmp
-  default_src_path: /opt/bytehawks/deps/src
-  libraries:
-    default_prefix: /opt/bytehawks/deps
-  applications:
-    default_prefix: /opt/bytehawks/{{ name }}
