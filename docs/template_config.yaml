@@ -6,163 +6,418 @@ config:
   variables:
     primary_registry_url: "registry.bytehawks.org"
     primary_registry_namespace: "bytehawks-org"
-    artifact_base_path: "/opt/bytehawks"
 
-  # Defaults
+    # Source of truth for package definitions and configurations.
+    source_of_truth:
+      # source_of_truth define the type of source of truth to be used for package definitions and configurations.
+      # Possible values: git|filesystem
+      # Required: true
+      # Default: git
+      git:
+        repo_url: "https://github.com/bytehawks-org/distillery"
+        branch: "main"
+        credentials: "${GIT_TOKEN}"
+      #filesystem:    # Roadmap: support for filesystem in future releases
+
+    network:
+      # Network timeout for all network operations (in seconds).
+      # Required: false
+      # Default: 30
+      timeout: 30
+
+      # Number of retries for network operations.
+      # Required: false
+      # Default: 3
+      retry: 3
+
+
+    # Filesystem structure for libraries and artifacts.
+    filesystem_structure:
+      # If flat is set to true all dependencies and applications will be stored directly in the artifact_base_path
+      # honoring the standard filesystem hierarchy (e.g., /opt/bytehawks/{lib, lib64, sbin, bin, ...}).
+      # Otherwise, if flat is set to false dependencies and applications will be stored in separate folders
+      # (e.g., /opt/bytehawks/deps and /opt/bytehawks/apps/{package_name}).
+      # Required: true
+      # Possible values: true|false
+      # Default: false
+      flat: false
+
+      # When flat is set to false these directives define the folder names for dependencies and applications.
+      # When flat is set to true these directives are ignored.
+      # Required: false
+      # Defaults: deps and apps for both dependencies_folder and applications_folder. Ignored if flat is true.
+      dependecies_folder: "deps"
+      applications_folder: "apps"
+
+    # Filesystem paths
+    path:
+      # Filesystem base paths for artifacts and data.
+      # With the vision of having multiple deployment targets (cloud instances, bare-metal servers, container, ecc) we
+      # moved to a more flexible filesystem structure where artifacts and data are stored in separate base paths.
+      # This will allow us to easily manage and organize the files generated during the build process and the final
+      # artifacts in a more efficient way.
+      # In order to honor the standard POSIX filesystem hierarchy we suggest to use /opt for artifacts and /srv for data.
+      # Due to define a spoken hierarchy we use the /opt/bytehawks and /srv/bytehawks paths as default base paths.
+      # These paths can be customized as needed to fit the specific requirements of the deployment environment and both
+      # variables are required (no default values are provided).
+      artifact: "/opt/bytehawks"
+      data: "/srv/bytehawks"
+      # Base path for all build-related activities.
+      work:
+        # path.build.base variable is used only for a better readability of the configuration file.
+        # If config.variables.use_mktemp is set to true building.base will be overridden during the build process with
+        # a temporary folder created with mktemp utility. Otherwise, defaults.build.user.home it will be used as
+        # base path and subfolders with the package name will be created inside it. Examples (with package.name = "foo"):
+        # when use_mktemp is set to "true"....: /tmp/tmp.abcd1234/foo/
+        # when use_mktemp is set to "false"...: /home/bh/foo/
+        # Required: false
+        # Default: "{{ package.name }}"
+        base: "{{ package.name }}"
+        packages: "{{ path.building.base }}/packages"
+        backup: "{{ path.building.base }}/backup"
+        cache: "{{ path.building.base }}/cache"
+        downloads: "{{ path.building.base }}/download"
+        logs: "{{ path.building.base }}/logs"
+        patches: "{{ path.building.base }}/patches"
+
+    # variants, architectures, type and packaging_formats need to be declared and defined with at least
+    # one value: this is not a bug but a design choice to have a clear overview of the supported options for the
+    # build system and to have a solid base for future releases where multiple values will be supported.
+    variants: [ "stable" ]            # Roadmap: support for multiple variants in a single build in future releases
+    architectures: [ "amd64" ]        # Roadmap: support arm64 and others in future releases
+    type: [ "native" ]                # Roadmap: support for container, ssh and others in future releases
+    packaging_formats: [ "tar.gz" ]   # Roadmap: support for zip, deb and rpm and others in future releases
+    checksum_algorithms: [ "sha256" ] # Roadmap: support for md5, sha1, sha512 and others in future releases
+
+  # Defaults sections
   defaults:
     build:
+      # the build.linking directive define how the binaries will be compiled: with static or dynamic linking.
+      # This configuration can be oveerriden in the package definition in special cases where it's impossibile
+      # to compile a statically linked binaries.
+      # Required: false
+      # Possible vaues: static|dynamic
+      # Default: static
+      linking: "static"
+
+      # build.compiler define the compiler to be used during the build process
+      # Required: true
+      # Possible values: musl-gcc (next realasae roadmap: clang and gcc)
+      # Default: musl-gcc
+      compiler: "musl-gcc"
+
+      # build.variant define the build variant to be used during the build process
+      # Required: true
+      # Possible values: one of the values defined in config.variables.variants, or wildcard "*"/"all"
+      #                  If wildcard is used, all variants defined in config.variables.variants will be used.
+      # Validation: the selected variant(s) MUST exist in config.variables.variants
+      # Default: at lease one of the definded value, or array of these, in config.variants section or
+      #          one of wildcars "*"/"all"
+      # Examples:
+      # variant: "legacy"
+      # variant: [ "stable", "legacy" ]
+      # variant: "all"
       variant: "stable"
+
+      # build.version_policy define the versioning policy to be used during the build process
+      # Required: true
+      # Possible values: guardrails (next realasae roadmap: fixed, latest, ecc)
+      # Default: guardrails
+      version_policy: "guardrails"  # Roadmap for future releases: support for other versioning policies
+
+      # build.arch  define the target architecture for the build process
+      # Required: true
+      # Possible values: all available architectures defined in the architectures section. there is a wildcard "*"
+      #                  or "all" that can be used to select all available architectures.
+      # Default: at lease one of the definded value in config.architectures section or one of wildcars "*"/"all"
       arch: "amd64"
+
+      # build.user define the user to be used during the build process.
+      # Consider that if user is present in the build environment (container or native) it will be used, otherwise
+      # it will be created with the defined parameters.
+      user:
+        # build.user.name define the username to be used during the build process.
+        # Required: true
+        # Possible values: any valid username, existing or to be created.
+        # Default: bh (acronym for bytehawks)
+        name: "bh"
+
+        # build.user.group define the user group to be used during the build process.
+        # if no value is defined and no user is present in the build environment (container or native) a group with the
+        # same name of the user will be created.
+        # Required: false
+        # Possible values: any valid uid, existing or to be created.
+        # Default: "{{ build.user.name }}"
+        group: "{{ build.user.name }}"
+
+        # build.user.uid define the user id to be used during the build process.
+        # If no value is defined and no user is present in the build environment (container or native) a user with an
+        # automatically assigned uid will be created.
+        # Required: false
+        # Possible values: any valid uid, existing or to be created.
+        # Default: 1024
+        uid: 1024
+
+        # build.user.gid define the user group id to be used during the build process.
+        # If no value is defined and no user is present in the build environment (container or native) a group with an
+        # automatically assigned gid will be created.
+        # Required: false
+        # Possible values: any valid gid, existing or to be created.
+        # Default: 1024
+        gid: 1024
+
+        # build.user.home define the user home directory to be used during the build process.
+        # If no value is defined and no user is present in the build environment (container or native) the home
+        # directory will be set to /home/{{ build.user.name }}.
+        # Required: false
+        # Possible values: any valid home directory path.
+        # Default: /home/{{ build.user.name }}
+        home: "/home/{{ build.user.name }}"
+
+        # build.user.shell define the user shell to be used during the build process.
+        # If no value is defined and no user is present in the build environment (container or native) the shell will
+        # be set to /bin/bash.
+        # Required: false
+        # Possible values: any valid shell path.
+        # Default: /bin/bash
+        shell: "/bin/bash"
+
+        # build.user.groups define the additional groups to which the user will be added during the build process.
+        # If no value is defined the user will be added to the "sudo" and "wheel" groups.
+        # Required: false
+        # Possible values: any valid group names existing in the build environment (container or native).
+        # Default: []
+        groups: []
+
+      # build.use_mktemp define if a temporary folder must be used for the build process.
+      # If set to "true" during the build process will be created a temporary folder (using mktemp utility) to isolate
+      # and grant a correst cleanup process after the build is completed. This is usefull to avoid conflicts between
+      # multiple builds and to have a clean environment for each build.
+      # Required: false
+      # Possible values: true|false
+      # Default: true
+      use_mktemp: true
+
+      # build.use_fakeroot define if the build process must be executed with fakeroot utility.
+      # If set to "true" the build commands will be executed with fakeroot to simulate root privileges without
+      # actually requiring root access. This is usefull to avoid permission issues during the build process and to
+      # ensure that the build artifacts have the correct ownership and permissions.
+      # Required: false
+      # Possible values: true|false
+      # Default: true
+      use_fakeroot: true
+
+      # build.cleanup_on_success define if the build artifacts must be removed after a successful build
+      # Required: false
+      # Possible values: true|false
+      # Default: true
       cleanup_on_success: true
+
+      # build.cleanup_on_failure define if the build artifacts must be removed after a failed build
+      # Required: false
+      # Possible values: true|false
+      # Default: false
       cleanup_on_failure: false
 
+    # Packaging section
     packaging:
+      # packaging.format define the packaging format for the final artifacts
+      # Required: true
+      # Possible values: all available packaging formats defined in the packaging_formats section. there is a
+      #                  wildcard "*" or "all" that can be used to select all available packaging formats.
+      # Default: at lease one of the definded value in config.packaging_formats section or one of wildcars "*"/"all"
       format: "tar.gz"
+
+      # packaging.filename_template define the template for the final artifact filename. It supports jinja2 templating
+      # Required: true
+      # Default: "{{ package.name }}-{{ full_version }}-{{ build.arch }}-{{ build.variant }}.{{ this.format }}"
+      filename_template: "{{ package.name }}-{{ full_version }}-{{ build.arch }}-{{ build.variant }}.{{ this.format }}"
+
+      # packaging.generate_checksum define if a checksum file must be generated for the final artifact.
+      # It supports multiple algorithms defined in the checksum_algorithms section: if more than one algorithm is
+      # defined multiple checksum files will be generated (one for each algorithm).
+      # Required: false
+      # Possible values: true|false
+      # Default: true
       generate_checksum: true
-      generate_sbom: true
-      generate_signature: false  # Roadmap
 
-  # Filesystem paths
-  path:
-    base: "{{ variables.artifact_base_path }}"
-    downloads: "{{ path.base }}/tmp"
-    sources: "{{ path.base }}/src"
-    build: "{{ path.base }}/build"
+      # packaging.generate_signature define if a signature file must be generated for the final artifact.
+      # Actually this feature is in roadmap for future releases.
+      # Required: false
+      # Possible values: true|false
+      # Default: false
+      generate_signature: false   # Roadmap
 
-    generated:
-      libraries: "{{ path.base }}/deps"
-      applications: "{{ path.base }}/apps/{{ package.name }}"
+      # packaging.generate_sbom define if a Software Bill of Materials (SBOM) must be generated for the final artifact.
+      # Actually this feature is in roadmap for future releases.
+      # Required: false
+      # Possible values: true|false
+      # Default: false
+      generate_sbom: false        # Roadmap
 
-  # Build options
-  option:
-    build_user:
-      name: "bh"
-      group: "bh"
-      uid: 1024
-      gid: 1024
-      homedir: "/home/bh"
-      shell: "/bin/bash"
 
-    runtime:
-      tmpfs:
-        enabled: true
-        size: "2g"
-        mount_point: "/tmp"
-
-      fakeroot:
-        enabled: true
-
-      security:
-        no_new_privileges: true
-        drop_capabilities: ["ALL"]
-
-  # Build configuration
+  # Build process configuration
   build:
     type:
-      container:
-        image_basename: "builda-bar"
-        runtime: "docker"  # or "podman"
-        pull_policy: "if-not-present"
+      # Native build configuration
+      native:
+        # navive builds are executed directly on the host system without specific configurations.
+        # Future releases mai include some specific options or task like packages installation, chroot, ecc.
+        # This kind of build can be used when you orchestrate it in GitHub Actions or other CI/CD systems where the
+        # build environment is already isolated and controlled or where are used a specific container for build steps.
+        # If you need to build multi variant during a CI/CD pipeline consider the need to have or matrix jobs or
+        # multiple steps with different build.variant values; orchestrate these via parameters or environment variables.
+        # Required: false
+        # Default: only a placeholder "pass: true" in order to have a valid configuration structure.
+        pass: true
 
-    variant:
-      old-legacy:
-        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
-        metadata:
-          alpine_version: "3.15"
-          musl_version: "1.2.2"
-          kernel: "5.15"
-          arch: "amd64"
-        description: "Legacy infrastructure with long certification cycles"
-        support_until: "2026-12-31"
+      # Container build configuration
+      #container:
+        # container.image_basename define the base name of the container image to be used for the build process.
+        # The full image name will be constructed using the primary registry url and namespace defined in the
+        # config.variables section, the image_basename and the build.variant. Example:
+        # {{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ build.variant }}
+        # All this section is in roadmap for future releases.
+        # Required: true
+        # Default: "<imate_to_use>:<tag>"
+        #image_basename: "<image_to_use>:<tag>" # Roadmap
 
-      legacy:
-        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
-        metadata:
-          alpine_version: "3.20"
-          musl_version: "1.2.5"
-          kernel: "6.6"
-          arch: "amd64"
-        description: "Long-term stable for critical production"
-        support_until: "2028-12-31"
+        # container.runtime define the container runtime to be used for the build process.
+        # Required: false
+        # Possible values: docker|podman|kubernetes
+        # Default: "docker"
+        #runtime: "docker"                      # Roadmap
 
-      stable:
-        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
-        metadata:
-          alpine_version: "3.21"
-          musl_version: "1.2.5"
-          kernel: "6.6"
-          arch: "amd64"
-        description: "Current production standard"
-        support_until: "2027-12-31"
+        # container.pull_policy define the pull policy for the container image.
+        # Required: false
+        # Possible values: always|if-not-present|never
+        # Default: "if-not-present"
+        # pull_policy: "if-not-present"         # Roadmap
 
-      stream:
-        image: "{{ variables.primary_registry_url }}/{{ variables.primary_registry_namespace }}/{{ build.type.container.image_basename }}:{{ this.name }}"
-        metadata:
-          alpine_version: "3.22"
-          musl_version: "1.2.5"
-          kernel: "6.12"
-          arch: "amd64"
-        description: "Bleeding edge for R&D and testing"
-        support_until: "rolling"
+        # Variants build configuration
+        #variant:
+          # At least one variant must be defined in this section matching one of the values defined in the
+          # config.variants section.
+          # Each variant can have specific configurations like the container image to be used for the build process
+          # and metadata like the supported alpine version, musl version, kernel version, architecture, ecc.
+          # This information will be used during the build process and will be included in the final artifact metadata.
+          # The build.variant value will be used to select the variant to be used during the build process.
+          # Required: true
+          # Default: at lease one of the definded value in config.variants section or wildcard "all".
+          # Examples:
+          #
+          # legacy:
+          #
+          #  container.variant.image can be implemented to use a specific container image for the build process.
+          #  This allows users to have a specific toolchain or environment for building packages for
+          #  specific environments.
+          #  Required: false
+          #  Default: none, the image defined in the build.type.container.image_basename will be used.
+          #  image: "<image_to_use>:<tag>"
 
-  # Container registry (for build images)
-  registry:
-    strategy: "primary-with-fallback"
+          #  container.variant.metadata can be used to include additional metadata about the build environment.
+          #  This metadata can be useful for documentation purposes or for future reference.
+          #  Required: false
+          #  Default: none
+          #  metadata:
+          #    alpine_version: "3.15"
+          #    musl_version: "1.2.2"
+          #    kernel: "5.15"
+          #    arch: "amd64"
+          #    description: "Legacy infrastructure with long certification cycles"
+          #    support_until: "2026-12-31"
 
-    primary:
-      harbor:
-        public: true
-        url: "registry.bytehawks.org"
-        namespace: "bytehawks-org"
-        username: "${HARBOR_USER}"
-        password: "${HARBOR_PASSWORD}"
-        timeout: 30
-        retry: 3
 
-    fallback:
-      ghcr:
-        public: true
-        url: "ghcr.io"
-        namespace: "bytehawks-org"
-        username: "${GITHUB_ACTOR}"
-        token: "${GITHUB_TOKEN}"
-        timeout: 30
-        retry: 3
+  # Container registry (for build images pull) - Roadmap for future releases
+  #registry:
+    # registry.strategy define the strategy to be used for the container registry access.
+    # Possible values:
+    # - primary-only: use only the primary registry defined in the primary section.
+    # - fallback-only: use only the fallback registry defined in the fallback section.
+    # - primary-with-fallback: try to use the primary registry first, if it fails use the fallback registry.
+    # This section is in roadmap for future releases.
+    # Required: true
+    # Default: primary-only
+    #strategy: "primary-only"       # Roadmap
 
-  # Artifact repository (for compiled binaries)
+    # registry.primary define the primary container registry configuration.
+    # This section is in roadmap for future releases.
+    #primary:
+      # registry type/name: can be dockerhub, ghcr, harbor, ecc.
+      # Required: true
+      # Default: harbor
+      #harbor:
+      #  primary.<repository>.public define if the repository is public or private for pull operations.
+      #  Required: false
+      #  Possible values: true|false
+      #  Default: true
+      #  public: true
+      #
+      #  primary.<repository>.url define the container registry url.
+      #  Required: true
+      #  Default: none
+      #  url: "registry.bytehawks.org"
+      #
+      #  primary.<repository>.namespace define the container registry namespace (in Harbor it's the project name).
+      #  Required: true
+      #  Default: none
+      #  namespace: "<namespace>"
+      #  username: "${HARBOR_USER}"
+      #  password: "${HARBOR_PASSWORD}"
+      #  timeout: 30
+      #  retry: 3
+    #fallback:
+    #  ghcr:
+    #    public: true
+    #    url: "ghcr.io"
+    #    namespace: "bytehawks-org"
+    #    username: "${GITHUB_ACTOR}"
+    #    token: "${GITHUB_TOKEN}"
+    #    timeout: 30
+    #    retry: 3
+
+  # Artifact repository (for compiled binaries upload and download)
   repository:
-    strategy: "primary-with-fallback"
+    # repository.strategy define the strategy to be used for artifact's registry/storage.
+    # Currently configured to: primary-only (fallback S3 is commented out but available for future use)
+    # Possible values:
+    # - primary-only: use only the primary registry/storage defined in the primary section.
+    # - fallback-only: use only the fallback registry/storage defined in the fallback section.
+    # - primary-with-fallback: try to use the primary first, if it fails use the fallback registry/storage.
+    # This section is in roadmap for future releases.
+    # Required: true
+    # Default: "primary-only"
+    strategy: "primary-only"
 
     primary:
       nexus:
-        type: "nexus"  # ← Opzionale ma più chiaro
         url: "https://registry.bytehawks.org/repository"
         repository: "packages"
         path_template: "{package}/{major_minor}/{full_version}"
         username: "${NEXUS_USER}"
         password: "${NEXUS_PASSWORD}"
-        timeout: 60
-        retry: 3
+        timeout: "{{ variables.network.timeout_default }}"
+        retry: "{{ variables.network.retry_default }}"
 
-    fallback:
-      s3:
-        type: "s3"  # ← Opzionale ma più chiaro
-        bucket: "bytehawks-packages"
-        region: "eu-south-1"
-        endpoint: "https://s3.eu-south-1.amazonaws.com"  # ← Opzionale
-        path_template: "{package}/{major_minor}/{full_version}"
-        access_key: "${AWS_ACCESS_KEY_ID}"
-        secret_key: "${AWS_SECRET_ACCESS_KEY}"
-        timeout: 60
-        retry: 3
+    #fallback:
+    #  s3:
+    #    type: "s3"
+    #    bucket: "bytehawks-packages"
+    #    region: "eu-south-1"
+    #    endpoint: "https://s3.eu-south-1.amazonaws.com"  # ← Opzionale
+    #    path_template: "{package}/{major_minor}/{full_version}"
+    #    access_key: "${AWS_ACCESS_KEY_ID}"
+    #    secret_key: "${AWS_SECRET_ACCESS_KEY}"
+    #    timeout: "{{ variables.network.timeout_default }}"
+    #    retry: "{{ variables.network.retry_default }}"
 
-  # Logging and observability
-  logging:
-    level: "INFO"
-    format: "json"
-    output: "stdout"
+  # Logging and observability - Roadmap for future releases
+  #logging:
+  #  level: "INFO"
+  #  format: "json"
+  #  output: "stdout"
 
-  # GitHub integration (upstream monitoring)
-  github:
-    token: "${GITHUB_TOKEN}"
-    api_url: "https://api.github.com"
+  # GitHub integration (upstream monitoring) - Roadmap for future releases
+  #github:
+  #  token: "${GITHUB_TOKEN}"
+  #  api_url: "https://api.github.com"

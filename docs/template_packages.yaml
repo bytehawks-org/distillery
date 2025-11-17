@@ -1,0 +1,108 @@
+version: 1.0.0
+schema: "distillery-package"
+
+# The command section in packages can be managed in two ways:
+#
+# 1. As individual files in the ./packages/ directory (e.g., ./packages/openssl.yaml)
+# 2. A folder in the ./packages/ directory containing multiple files. Example:
+#  ./packages/openssl/
+#  ./packages/openssl/openssl.yaml
+#  ./packages/openssl/patch.yaml        <- this file will be read ruing the patch step if present istead of the patch section in the main yaml
+#  ./packages/openssl/configure.yaml    <- this file will be read ruing the patch step if present istead of the patch section in the main yaml
+#
+# To do this you must specify in the section the directive file: filename.yaml. Example:
+# commands:
+#   build:
+#     pre: |
+#       ...
+#     patch:
+#       file: patch.yaml
+#     configure:
+#       file: configure.yaml
+#     ...
+
+package:
+  openssl:
+    type: library
+    variant:
+      - name: [ old-legacy, legacy ]
+        version:
+          guardrails: ">=3.0, <3.1"
+          full_version: "3.0.18"
+          last_update: "2025-11-11T00:00:00Z"
+      - name: stable
+        version:
+          guardrails: ">=3.5, <3.6"
+          full_version: "3.5.4"
+          last_update: "2025-11-11T00:00:00Z"
+      - name: stream
+        version:
+          guardrails: ">=3.6"
+          full_version: "3.6.0"
+          last_update: "2025-11-11T00:00:00Z"
+
+    website: https://www.{{ package.name }}.org/
+    repository:
+      git:
+        repo: https://github.com/{{ package.name }}/{{ package.name }}/
+        release_pattern:
+          tag:
+            format: "{{ name }}-{{ full_version }}"
+          archive_tpye: "tar.gz"
+          checksum_type: "sha256"
+        fallback_url_template: "{{ git.repo }}/releases/tag/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+
+    commands:
+      log_output: true
+      fail_on_error: true
+      timeout: 300
+      build:
+        pre: |
+          wget -O {{ config.path.downloads }}/{{ name }}-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
+          tar -xzf {{ config.path.downloads }}/{{ name }}-{{ full_version }}.tar.gz -C {{ config.path.sources }}
+          cd {{ config.path.sources }}/{{ name }}-{{ full_version }}
+
+        patch:
+          - url: https://www.openssl.org/news/openssl-3.0.18-legacy-compatibility.patch
+            sha256: d3f6e2f4f4e1b3e4c5f6a7b8c9d0e1f2a3b4c5d6e7f8g9h0i1j2k3l4m5n6o7p8
+            metadata:
+            comment: "Compatibility patch for legacy versions"
+            when:
+              variant_name: old-legacy
+              full_version: 3.0.18
+        configure:
+          static: |
+            ./Configure linux-x86_64 \
+              --prefix={{ config.variables.artifact_base_path }} \
+              --openssldir={{ config.variables.data_base_path }}/etc/ssl \
+              -static \
+              no-shared \
+              no-tests \
+              no-docs
+          dynamic: |
+            ./Configure linux-x86_64 \
+              --prefix={{ config.variables.artifact_base_path }} \
+              --openssldir={{ config.variables.data_base_path }}/etc/ssl
+        make: make
+        install: make install_sw
+        post: |
+          echo "{{ name }} {{ full_version }} build successfully."
+      tests:
+        - name: Verify {{ name }} binary exists
+          type: command_success
+          expected_exit_code: 0
+          output_message: "PASS|FAIL"
+          command: if [ -f {{ install_prefix }}/bin/{{ name }} ]; then (exit 0) ; else (exit 1); fi
+        - name: Verify {{ name }} version {{ full_version }}
+          type: command_success
+          expected_exit_code: 0
+          output_message: "PASS|FAIL"
+          command: "{{ install_prefix }}/bin/{{ name }} version | grep {{ full_version }} > /dev/null && exit 0 || exit 1"
+        - name: Verify {{ name }} binary is statically linked
+          type: command_success
+          expected_exit_code: 0
+          output_message: "PASS|FAIL"
+          command: ldd {{ install_prefix }}/bin/{{ name }} | egrep -i 'not a dynamic executable' && exit 0 || exit 1
+    tags:
+      - security
+      - crypto

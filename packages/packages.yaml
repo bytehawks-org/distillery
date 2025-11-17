@@ -23,6 +23,15 @@ package:
         wget -O {{ config.default_download_path }}/{{ name }}-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
         tar -xzf {{ config.default_download_path }}/{{ name }}-{{ full_version }}.tar.gz -C {{ config.default_src_path }}
         cd {{ config.default_src_path }}/{{ name }}-{{ full_version }}
+      patches:
+        - url: https://www.openssl.org/news/openssl-3.0.18-legacy-compatibility.patch
+          sha256: d3f6e2f4f4e1b3e4c5f6a7b8c9d0e1f2a3b4c5d6e7f8g9h0i1j2k3l4m5n6o7p8
+          metadata:
+            comment: "Compatibility patch for legacy versions"
+          when:
+            variant_name: old-legacy
+            full_version: 3.0.18
+
       configure: |
         ./Configure linux-x86_64 \
           --prefix={{ default_prefix }} \
