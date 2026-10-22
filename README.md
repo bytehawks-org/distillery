@@ -74,13 +74,33 @@ published, otherwise built from source (`--no-fetch` forces a rebuild). Local bu
 | `upstream-watch.yml` | weekly issue with newer upstream releases. |
 
 Setup (ARC on K3s, Nexus repository, GitHub artifacts repo, secrets): [docs/k3s-runner.md](docs/k3s-runner.md).
+Details of the pipeline: [docs/architecture.md](docs/architecture.md).
 
 ## Documentation
 
-- [docs/config.yaml.md](docs/config.yaml.md) — `config/config.yaml` reference
-- [docs/packages.yaml.md](docs/packages.yaml.md) — recipe reference and how to add a package
-- [docs/k3s-runner.md](docs/k3s-runner.md) — runner, Nexus and secrets setup
+| | |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | components, pipeline, design decisions |
+| [docs/cli.md](docs/cli.md) | all commands, options, environment variables |
+| [docs/config.yaml.md](docs/config.yaml.md) | `config/config.yaml` reference |
+| [docs/packages.yaml.md](docs/packages.yaml.md) | recipe schema and how to add a package |
+| [docs/linking-model.md](docs/linking-model.md) | static vs relocatable, static gate, bundler |
+| [docs/artifacts-and-repositories.md](docs/artifacts-and-repositories.md) | artifact format, Nexus/GitHub layout, consuming |
+| [docs/packages-catalog.md](docs/packages-catalog.md) | shipped packages, flags, validation status |
+| [docs/k3s-runner.md](docs/k3s-runner.md) | ARC on K3s, Nexus, secrets |
+| [docs/development.md](docs/development.md) | local setup, tests, validating recipes |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | common failures |
+| [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) | planned work · release notes |
+
+## Repository layout
+
+```
+config/config.yaml      global configuration          packages/*.yaml     one recipe per package
+scripts/                CLI, build engine, publishers  docker/builder/     builder image
+.github/workflows/      ci, builder-images, build-packages, upstream-watch
+deploy/arc/             K3s runner scale set           tests/              pytest suite
+```
 
 ## Roadmap
 
-SBOM is generated; signing (`generate_signature`, cosign) and arm64 builds are not implemented yet.
+See [ROADMAP.md](ROADMAP.md). SBOM is generated; artifact signing (cosign) and arm64 builds are not implemented yet.
