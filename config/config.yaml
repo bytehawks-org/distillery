@@ -15,6 +15,15 @@ config:
       arch: "amd64"
       cleanup_on_success: true
       cleanup_on_failure: false
+      # "container": the CLI spawns the builder image (local dev, Docker/Podman)
+      # "native":    the CLI already runs inside the builder image (CI on K3s)
+      executor: "container"
+      jobs: "auto"
+      # Toolchain flags applied to every step: static, hardened, reproducible.
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
+        CXXFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
+        LDFLAGS: "-static -Wl,-z,relro,-z,now"
 
     packaging:
       format: "tar.gz"
@@ -60,7 +69,7 @@ config:
   build:
     type:
       container:
-        image_basename: "builda-bar"
+        image_basename: "distillery-builder"
         runtime: "docker"  # or "podman"
         pull_policy: "if-not-present"
 
@@ -130,30 +139,31 @@ config:
         retry: 3
 
   # Artifact repository (for compiled binaries)
+  # mirror-all: every artifact is published to the local Nexus AND to GitHub Releases
   repository:
-    strategy: "primary-with-fallback"
+    strategy: "mirror-all"
 
     primary:
       nexus:
-        type: "nexus"  # ← Opzionale ma più chiaro
-        url: "https://registry.bytehawks.org/repository"
-        repository: "packages"
+        type: "nexus"
+        # Local Nexus on the K3s node (override with NEXUS_URL; must end with /repository)
+        url: "${NEXUS_URL:-http://nexus.nexus.svc.cluster.local:8081/repository}"
+        repository: "bytehawks-packages"   # Nexus 'raw (hosted)' repository
         path_template: "{package}/{major_minor}/{full_version}"
         username: "${NEXUS_USER}"
         password: "${NEXUS_PASSWORD}"
+        verify_tls: true
         timeout: 60
         retry: 3
 
     fallback:
-      s3:
-        type: "s3"  # ← Opzionale ma più chiaro
-        bucket: "bytehawks-packages"
-        region: "eu-south-1"
-        endpoint: "https://s3.eu-south-1.amazonaws.com"  # ← Opzionale
-        path_template: "{package}/{major_minor}/{full_version}"
-        access_key: "${AWS_ACCESS_KEY_ID}"
-        secret_key: "${AWS_SECRET_ACCESS_KEY}"
-        timeout: 60
+      github:
+        type: "github"
+        # Repository holding one GitHub Release per package version
+        repo: "bytehawks-org/artifacts"
+        tag_template: "{package}-{full_version}"
+        token: "${ARTIFACTS_GITHUB_TOKEN}"
+        timeout: 120
         retry: 3
 
   # Logging and observability

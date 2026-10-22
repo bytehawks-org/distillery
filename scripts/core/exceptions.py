@@ -36,3 +36,13 @@ class BuildError(DistilleryError):
 class DependencyError(DistilleryError):
     """Raised when dependency resolution fails"""
     pass
+
+
+class PackageError(DistilleryError):
+    """Raised when a package recipe is invalid or inconsistent"""
+    pass
+
+
+class PublishError(DistilleryError):
+    """Raised when uploading or downloading artifacts fails"""
+    pass

@@ -1,0 +1,56 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: openssl
+  kind: library
+  summary: "TLS/SSL and general purpose cryptography toolkit"
+  license: "Apache-2.0"
+  website: "https://www.openssl.org/"
+  status: stable
+  link: static
+
+  source:
+    url: "https://github.com/openssl/openssl/releases/download/openssl-{{ version }}/openssl-{{ version }}.tar.gz"
+
+  versions:
+    # 3.0 LTS reached end of life in 2026-09; kept only for the old-legacy variant.
+    - version: "3.0.22"
+      sha256: "67ebca7e50d17383028045486653492195b83db95f8558709701bb47b5c1ef81"
+      variants: [old-legacy]
+      series: "3.0"
+    - version: "3.5.9"
+      sha256: "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
+      variants: [legacy, stable]
+      series: "3.5"
+    - version: "3.6.5"
+      sha256: "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+      variants: [stream]
+      series: "3.6"
+
+  upstream:
+    type: github-releases
+    repo: openssl/openssl
+    tag_regex: '^openssl-(\d+\.\d+\.\d+)$'
+
+  steps:
+    - name: configure
+      run: |
+        {% set target = {'amd64': 'linux-x86_64', 'arm64': 'linux-aarch64'}[arch] %}
+        # openssldir=/etc/ssl: static binaries pick up the host CA store
+        ./Configure {{ target }} \
+          --prefix="$PREFIX" --openssldir=/etc/ssl --libdir=lib \
+          no-shared no-tests no-docs -static
+    - name: build
+      run: |
+        make -j"$JOBS"
+    - name: install
+      run: |
+        make install_sw DESTDIR="$DESTDIR"
+
+  smoke_tests:
+    - description: "openssl binary runs and is the expected version"
+      run: |
+        "$ARTIFACT_ROOT/bin/openssl" version | grep -q "{{ version }}"
+
+  tags: [tls, crypto, core]

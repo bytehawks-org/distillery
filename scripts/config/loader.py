@@ -4,7 +4,7 @@ Configuration loader with validation and template resolution.
 
 import yaml
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 import logging
 
 from scripts.config.models import ConfigFile, DistilleryConfig
@@ -25,13 +25,17 @@ class ConfigLoader:
     4. Return validated DistilleryConfig object
     """
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Optional[Path] = None,
+                 variable_overrides: Optional[Dict[str, str]] = None):
         """
         Initialize config loader.
 
         Args:
             config_path: Path to config.yaml (default: config/config.yaml)
+            variable_overrides: Values forced into ``config.variables`` before
+                validation (e.g. artifact_base_path for local runs)
         """
+        self.variable_overrides = variable_overrides or {}
         if config_path is None:
             # Path relativo alla root del progetto
             config_path = Path(__file__).parent.parent.parent / "config" / "config.yaml"
@@ -53,6 +57,10 @@ class ConfigLoader:
 
         # Step 1: Load YAML
         raw_config = self._load_yaml()
+
+        if self.variable_overrides:
+            variables = raw_config.setdefault("config", {}).setdefault("variables", {})
+            variables.update(self.variable_overrides)
 
         # Step 2: Validate structure
         config_file = self._validate_structure(raw_config)
@@ -214,43 +222,28 @@ class ConfigLoader:
             )
             logger.debug(f"Resolved path.generated.libraries: {config.path.generated.libraries}")
 
-        # Applications path may contain {{ package.name }} - resolve what we can
+        # Applications path contains {{ package.name }}: resolve everything else now and
+        # keep the placeholder (it maps to itself) for build time.
         if self.template_engine.has_template_vars(config.path.generated.applications):
-            try:
-                # Try to resolve, but {{ package.name }} will remain
-                resolved = self.template_engine.render(
-                    config.path.generated.applications, context
-                )
-                config.path.generated.applications = resolved
-
-                # Log if package.name remains (expected)
-                if '{{ package.name }}' in resolved or '{{package.name}}' in resolved:
-                    logger.debug(
-                        f"Path contains runtime variable: {resolved} "
-                        "(will be resolved at build time)"
-                    )
-                else:
-                    logger.debug(f"Resolved path.generated.applications: {resolved}")
-
-            except Exception as e:
-                # If template fails (e.g., package.name undefined), keep original
-                logger.debug(
-                    f"Path contains runtime variables: {config.path.generated.applications} "
-                    "(will be resolved at build time)"
-                )
+            deferred = dict(context, package={"name": "{{ package.name }}"})
+            config.path.generated.applications = self.template_engine.render(
+                config.path.generated.applications, deferred
+            )
+            logger.debug(f"Resolved path.generated.applications: {config.path.generated.applications}")
 
         return config
 
 
-def load_config(config_path: Optional[Path] = None) -> DistilleryConfig:
+def load_config(config_path: Optional[Path] = None,
+                variable_overrides: Optional[Dict[str, str]] = None) -> DistilleryConfig:
     """
     Convenience function to load configuration.
 
     Args:
         config_path: Path to config.yaml
+        variable_overrides: Optional overrides for ``config.variables``
 
     Returns:
         Validated DistilleryConfig object
     """
-    loader = ConfigLoader(config_path)
-    return loader.load()
+    return ConfigLoader(config_path, variable_overrides).load()

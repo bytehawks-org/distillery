@@ -10,6 +10,8 @@ from .exceptions import (
     RepositoryError,
     BuildError,
     DependencyError,
+    PackageError,
+    PublishError,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     'RepositoryError',
     'BuildError',
     'DependencyError',
+    'PackageError',
+    'PublishError',
 ]

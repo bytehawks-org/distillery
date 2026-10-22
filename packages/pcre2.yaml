@@ -1,0 +1,41 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: pcre2
+  kind: library
+  summary: "Perl Compatible Regular Expressions, version 2"
+  license: "BSD-3-Clause"
+  website: "https://www.pcre.org/"
+  status: stable
+  link: static
+
+  source:
+    url: "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-{{ version }}/pcre2-{{ version }}.tar.gz"
+
+  versions:
+    - version: "10.49"
+      sha256: "929f0b20e62879252a15886b06c89f1edef61a363cbd5826fb041080a5e557ae"
+      variants: [all]
+      series: "10"
+
+  upstream:
+    type: github-releases
+    repo: PCRE2Project/pcre2
+    tag_regex: '^pcre2-(\d+\.\d+)$'
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static \
+          --enable-jit --enable-pcre2-8 --disable-pcre2-16 --disable-pcre2-32 \
+          --disable-pcre2grep-libz --disable-pcre2grep-libbz2
+    # libtool swallows -static; -all-static is what makes the tools fully static
+    - name: build
+      run: |
+        make -j"$JOBS" LDFLAGS="$LDFLAGS -all-static"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR" LDFLAGS="$LDFLAGS -all-static"
+
+  tags: [regex, core]

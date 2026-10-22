@@ -1,0 +1,38 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: zlib
+  kind: library
+  summary: "General purpose compression library"
+  license: "Zlib"
+  website: "https://zlib.net/"
+  status: stable
+  link: static
+
+  source:
+    url: "https://github.com/madler/zlib/releases/download/v{{ version }}/zlib-{{ version }}.tar.gz"
+
+  versions:
+    - version: "1.3.2"
+      sha256: "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+      variants: [all]
+      series: "1.3"
+
+  upstream:
+    type: github-releases
+    repo: madler/zlib
+    tag_regex: '^v(\d+\.\d+(?:\.\d+)?)$'
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --static
+    - name: build
+      run: |
+        make -j"$JOBS"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR"
+
+  tags: [compression, core]

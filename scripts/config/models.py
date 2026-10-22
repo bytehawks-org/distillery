@@ -3,10 +3,11 @@ Configuration Data Models using Pydantic for validation and type safety.
 """
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Dict, List, Optional, Literal, Any
+from typing import Dict, List, Optional, Literal, Any, Union
 from pathlib import Path
 from enum import Enum
-import os
+
+from scripts.core.util import expand_env
 
 
 # ============================================================================
@@ -162,14 +163,11 @@ class RegistryEndpoint(BaseModel):
     timeout: int = Field(default=30, ge=1, description="Request timeout in seconds")
     retry: int = Field(default=3, ge=0, description="Number of retries")
 
-    @field_validator('username', 'password', 'token', mode='before')  # Pydantic v2
+    @field_validator('url', 'username', 'password', 'token', mode='before')
     @classmethod
     def expand_env_vars(cls, v):
-        """Expand environment variables like ${VAR_NAME}"""
-        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
-            var_name = v[2:-1]
-            return os.getenv(var_name)
-        return v
+        """Expand ${VAR} / ${VAR:-default}"""
+        return expand_env(v)
 
 
 class RegistryConfig(BaseModel):
@@ -186,34 +184,53 @@ class RegistryConfig(BaseModel):
         return self
 
 
-from typing import Union, Literal
-from pydantic import Field, BaseModel, field_validator, model_validator
+class RepositoryStrategy(str, Enum):
+    """How artifacts are published to the configured repositories"""
+    PRIMARY_ONLY = "primary-only"
+    PRIMARY_WITH_FALLBACK = "primary-with-fallback"
+    MIRROR_ALL = "mirror-all"  # publish to every endpoint (primary + fallback)
 
 
 class NexusRepositoryEndpoint(BaseModel):
-    """Nexus/Artifactory style repository"""
+    """Nexus 3 'raw (hosted)' repository"""
     type: Literal["nexus"] = "nexus"
-    url: str = Field(..., description="Repository URL")
+    url: str = Field(..., description="Nexus base URL including /repository")
     repository: str = Field(..., description="Repository name")
     path_template: str = Field(default="{package}/{major_minor}/{full_version}")
     username: Optional[str] = None
     password: Optional[str] = None
+    verify_tls: bool = Field(default=True)
     timeout: int = Field(default=60, ge=1)
     retry: int = Field(default=3, ge=0)
 
-    @field_validator('username', 'password', mode='before')
+    @field_validator('url', 'username', 'password', mode='before')
     @classmethod
     def expand_env_vars(cls, v):
-        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
-            return os.getenv(v[2:-1])
-        return v
+        return expand_env(v)
 
     def get_base_url(self) -> str:
-        return f"{self.url}/{self.repository}"
+        return f"{self.url.rstrip('/')}/{self.repository}"
+
+
+class GitHubRepositoryEndpoint(BaseModel):
+    """GitHub Releases used as artifact store (one release per package version)"""
+    type: Literal["github"] = "github"
+    repo: str = Field(..., pattern=r"^[\w.-]+/[\w.-]+$", description="owner/repo holding the releases")
+    api_url: str = Field(default="https://api.github.com")
+    upload_url: str = Field(default="https://uploads.github.com")
+    tag_template: str = Field(default="{package}-{full_version}")
+    token: Optional[str] = None
+    timeout: int = Field(default=120, ge=1)
+    retry: int = Field(default=3, ge=0)
+
+    @field_validator('repo', 'api_url', 'upload_url', 'token', mode='before')
+    @classmethod
+    def expand_env_vars(cls, v):
+        return expand_env(v)
 
 
 class S3RepositoryEndpoint(BaseModel):
-    """S3 compatible repository"""
+    """S3 compatible repository (configuration only, uploader not implemented yet)"""
     type: Literal["s3"] = "s3"
     bucket: str = Field(..., description="S3 bucket name")
     region: str = Field(..., description="S3 region")
@@ -227,9 +244,7 @@ class S3RepositoryEndpoint(BaseModel):
     @field_validator('access_key', 'secret_key', mode='before')
     @classmethod
     def expand_env_vars(cls, v):
-        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
-            return os.getenv(v[2:-1])
-        return v
+        return expand_env(v)
 
     def get_base_url(self) -> str:
         if self.endpoint:
@@ -237,22 +252,21 @@ class S3RepositoryEndpoint(BaseModel):
         return f"https://s3.{self.region}.amazonaws.com/{self.bucket}"
 
 
-# Union type per repository endpoint
-RepositoryEndpoint = Union[NexusRepositoryEndpoint, S3RepositoryEndpoint]
+RepositoryEndpoint = Union[NexusRepositoryEndpoint, GitHubRepositoryEndpoint, S3RepositoryEndpoint]
 
 
 class RepositoryConfig(BaseModel):
     """Artifact repository configuration"""
-    strategy: RegistryStrategy = Field(default=RegistryStrategy.PRIMARY_WITH_FALLBACK)
+    strategy: RepositoryStrategy = Field(default=RepositoryStrategy.PRIMARY_WITH_FALLBACK)
     primary: Dict[str, RepositoryEndpoint]
     fallback: Optional[Dict[str, RepositoryEndpoint]] = None
 
-
-class RepositoryConfig(BaseModel):
-    """Artifact repository configuration"""
-    strategy: RegistryStrategy = Field(default=RegistryStrategy.PRIMARY_WITH_FALLBACK)
-    primary: Dict[str, RepositoryEndpoint]
-    fallback: Optional[Dict[str, RepositoryEndpoint]] = None
+    def endpoints(self) -> List[tuple]:
+        """Ordered (name, endpoint) list: primary first, then fallback"""
+        out = list(self.primary.items())
+        if self.fallback:
+            out += list(self.fallback.items())
+        return out
 
 
 class DefaultsConfig(BaseModel):
@@ -263,6 +277,12 @@ class DefaultsConfig(BaseModel):
         arch: str = Field(default="amd64")
         cleanup_on_success: bool = Field(default=True)
         cleanup_on_failure: bool = Field(default=False)
+        executor: Literal["container", "native"] = Field(
+            default="container",
+            description="container: spawn the builder image; native: already inside it (CI)")
+        jobs: Union[int, Literal["auto"]] = Field(default="auto")
+        env: Dict[str, str] = Field(default_factory=dict,
+                                    description="Toolchain env applied to every build step")
 
     class PackagingDefaults(BaseModel):
         format: str = Field(default="tar.gz")
@@ -290,11 +310,7 @@ class GitHubConfig(BaseModel):
     @field_validator('token', mode='before')
     @classmethod
     def expand_env_vars(cls, v):
-        """Expand environment variables"""
-        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
-            var_name = v[2:-1]
-            return os.getenv(var_name)
-        return v
+        return expand_env(v)
 
 
 # ============================================================================

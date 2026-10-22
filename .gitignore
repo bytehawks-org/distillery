@@ -1,2 +1,8 @@
-.venv
-.venv/*
+.idea/workspace.xml
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+dist/
+/work/
+.idea/
