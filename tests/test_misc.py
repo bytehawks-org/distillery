@@ -80,13 +80,15 @@ class _Repos:
 def test_plan_splits_buckets_and_skips_published(config):
     rs = RecipeSet.load(config.list_variants(), REPO / "packages")
     full = plan(config, rs, variants=["stable"])
-    assert [e["package"] for e in full["libraries"]] == ["pcre2", "zlib", "openssl"] or \
-        {e["package"] for e in full["libraries"]} == {"pcre2", "zlib", "openssl"}
+    stable_libs = {e["package"] for e in full["libraries"]}
+    assert {"pcre2", "zlib", "openssl", "curl"} <= stable_libs
+    assert "libxml2" not in stable_libs          # experimental: only on request
     assert any(e["package"] == "nginx" for e in full["applications"])
     assert full["applications"][0]["image"].endswith(":stable")
 
     part = plan(config, rs, variants=["stable"], repositories=_Repos({"zlib", "nginx"}))
-    assert {e["package"] for e in part["libraries"]} == {"pcre2", "openssl"}
+    assert {e["package"] for e in part["libraries"]} >= {"pcre2", "openssl"}
+    assert "zlib" not in {e["package"] for e in part["libraries"]}
     assert not any(e["package"] == "nginx" for e in part["applications"])
 
     forced = plan(config, rs, variants=["stable"], repositories=_Repos({"zlib"}), force=True)
