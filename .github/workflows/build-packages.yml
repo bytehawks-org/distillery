@@ -1,0 +1,155 @@
+name: Build packages
+
+# plan -> libraries -> applications. Every job runs INSIDE the builder image
+# (container job, scheduled on the K3s runner scale set), so the CLI uses
+# `--executor native`. JavaScript actions are deliberately not used in the
+# container jobs: the checkout is a plain `git fetch`, which works on every
+# Alpine variant.
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/**
+      - config/**
+      - scripts/**
+      - requirements.txt
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Comma separated package names (empty = every stable package)"
+        default: ""
+      variants:
+        description: "Comma separated variants (empty = all)"
+        default: ""
+      include_experimental:
+        description: "Include experimental packages"
+        type: boolean
+        default: false
+      force:
+        description: "Rebuild even if already published"
+        type: boolean
+        default: false
+      publish:
+        description: "Publish to Nexus + GitHub Releases"
+        type: boolean
+        default: true
+
+concurrency:
+  group: build-packages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  PUBLISH: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
+  # Runner-side secrets/config used by the CLI (see docs/k3s-runner.md)
+  NEXUS_URL: ${{ vars.NEXUS_URL }}
+  NEXUS_USER: ${{ secrets.NEXUS_USER }}
+  NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+  ARTIFACTS_GITHUB_TOKEN: ${{ secrets.ARTIFACTS_GITHUB_TOKEN }}
+
+jobs:
+  plan:
+    runs-on: ${{ vars.RUNNER_LABEL || 'bytehawks-k3s' }}
+    container:
+      image: ${{ vars.PLAN_IMAGE || 'ghcr.io/bytehawks-org/distillery-builder:stable' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      libraries: ${{ steps.plan.outputs.libraries }}
+      applications: ${{ steps.plan.outputs.applications }}
+      has_libraries: ${{ steps.plan.outputs.has_libraries }}
+      has_applications: ${{ steps.plan.outputs.has_applications }}
+    steps:
+      - name: Checkout
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - name: Plan
+        id: plan
+        env:
+          IN_PACKAGES: ${{ inputs.packages }}
+          IN_VARIANTS: ${{ inputs.variants }}
+          IN_EXPERIMENTAL: ${{ inputs.include_experimental }}
+          IN_FORCE: ${{ inputs.force }}
+          BUILDER_REGISTRY: ${{ vars.BUILDER_REGISTRY || 'fallback' }}
+        run: |
+          set -eu
+          args="--skip-existing --registry $BUILDER_REGISTRY"
+          for p in $(echo "${IN_PACKAGES:-}" | tr ',' ' '); do args="$args --package $p"; done
+          for v in $(echo "${IN_VARIANTS:-}" | tr ',' ' '); do args="$args --variant $v"; done
+          [ "${IN_EXPERIMENTAL:-}" = "true" ] && args="$args --include-experimental"
+          [ "${IN_FORCE:-}" = "true" ] && args="$args --force"
+          python3 -m scripts.cli plan --format github $args
+          echo "Plan:" >> "$GITHUB_STEP_SUMMARY"
+          python3 -m scripts.cli plan $args | python3 -c \
+            'import json,sys; d=json.load(sys.stdin); [print("- `%s`" % e["key"]) for b in d.values() for e in b]' \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  libraries:
+    needs: plan
+    if: needs.plan.outputs.has_libraries == 'true'
+    name: lib ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
+    runs-on: ${{ vars.RUNNER_LABEL || 'bytehawks-k3s' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.libraries) }}
+    container:
+      image: ${{ matrix.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - name: Build
+        run: |
+          set -eu
+          flags=""
+          [ "${{ matrix.experimental }}" = "true" ] && flags="--include-experimental"
+          [ "$PUBLISH" = "true" ] && flags="$flags --publish"
+          python3 -m scripts.cli --base-path /opt/bytehawks build "${{ matrix.package }}" \
+            --variant "${{ matrix.variant }}" --executor native --output dist $flags
+
+  applications:
+    needs: [plan, libraries]
+    if: ${{ !cancelled() && needs.plan.outputs.has_applications == 'true' && needs.libraries.result != 'failure' }}
+    name: app ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
+    runs-on: ${{ vars.RUNNER_LABEL || 'bytehawks-k3s' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.applications) }}
+    container:
+      image: ${{ matrix.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - name: Build
+        run: |
+          set -eu
+          flags=""
+          [ "${{ matrix.experimental }}" = "true" ] && flags="--include-experimental"
+          [ "$PUBLISH" = "true" ] && flags="$flags --publish"
+          python3 -m scripts.cli --base-path /opt/bytehawks build "${{ matrix.package }}" \
+            --variant "${{ matrix.variant }}" --executor native --output dist $flags

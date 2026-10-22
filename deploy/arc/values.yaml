@@ -1,0 +1,48 @@
+# Helm values for the GitHub Actions Runner Controller scale set that runs the
+# Distillery builds on the K3s node.
+#
+#   helm install arc oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
+#     -n arc-systems --create-namespace
+#   helm install bytehawks-k3s oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+#     -n arc-runners --create-namespace -f deploy/arc/values.yaml
+#
+# The scale set name is the `runs-on:` label used by the workflows.
+githubConfigUrl: "https://github.com/bytehawks-org"
+githubConfigSecret: arc-github-app      # kubectl -n arc-runners create secret generic arc-github-app --from-literal=github_token=...
+
+runnerScaleSetName: "bytehawks-k3s"
+minRunners: 0
+maxRunners: 4                           # = max parallel package builds
+
+# `container:` jobs (the builder image) need the Kubernetes container hooks.
+containerMode:
+  type: "kubernetes"
+  kubernetesModeWorkVolumeClaim:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: "local-path"      # K3s default
+    resources:
+      requests:
+        storage: 30Gi
+
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        env:
+          - name: ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER
+            value: "true"
+          # sizes the job (builder) container, see hook-extension.yaml
+          - name: ACTIONS_RUNNER_CONTAINER_HOOK_TEMPLATE
+            value: /home/runner/pod-template/content
+        volumeMounts:
+          - name: hook-extension
+            mountPath: /home/runner/pod-template
+    volumes:
+      - name: hook-extension
+        configMap:
+          name: distillery-hook-extension
+          items:
+            - key: content
+              path: content

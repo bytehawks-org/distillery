@@ -1,0 +1,52 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: curl
+  kind: library
+  summary: "libcurl and the curl command line tool"
+  license: "curl"
+  website: "https://curl.se/"
+  status: stable
+  link: static
+  depends_on: [zlib, openssl]
+
+  source:
+    url: "https://github.com/curl/curl/releases/download/curl-{{ version | replace('.', '_') }}/curl-{{ version }}.tar.xz"
+
+  versions:
+    - version: "8.23.0"
+      sha256: "8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5"
+      variants: [all]
+      series: "8"
+
+  upstream:
+    type: github-releases
+    repo: curl/curl
+    tag_regex: '^curl-(\d+_\d+_\d+)$'
+
+  # static OpenSSL needs libdl/libpthread spelled out for the configure link tests
+  env:
+    LIBS: "-ldl -lpthread"
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static \
+          --with-openssl="$DEPS" --with-zlib="$DEPS" \
+          --with-ca-bundle=/etc/ssl/certs/ca-certificates.crt --with-ca-path=/etc/ssl/certs \
+          --without-libpsl --without-brotli --without-zstd --without-libidn2 \
+          --without-nghttp2 --without-libssh2 --disable-ldap --disable-ldaps \
+          --disable-docs --disable-manual --disable-ntlm-wb
+    - name: build
+      run: |
+        make -j"$JOBS" LDFLAGS="$LDFLAGS -all-static"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR" LDFLAGS="$LDFLAGS -all-static"
+
+  smoke_tests:
+    - run: |
+        "$ARTIFACT_ROOT/bin/curl" --version | grep -q "libcurl/{{ version }}"
+
+  tags: [http, php-dep]

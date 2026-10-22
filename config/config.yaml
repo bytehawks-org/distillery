@@ -21,8 +21,8 @@ config:
       jobs: "auto"
       # Toolchain flags applied to every step: static, hardened, reproducible.
       env:
-        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
-        CXXFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
+        CFLAGS: "-O2 -pipe -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
+        CXXFLAGS: "-O2 -pipe -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
         LDFLAGS: "-static -Wl,-z,relro,-z,now"
 
     packaging:

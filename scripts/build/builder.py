@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from scripts.build.artifact import ArtifactRef
+from scripts.build.bundle import bundle_runtime
 from scripts.build.executor import StepRunner
 from scripts.build.packager import PackagedArtifact, extract_artifact, package_artifact
 from scripts.build.verify import find_dynamic_executables, find_shared_objects, iter_files, read_elf
@@ -21,7 +22,7 @@ from scripts.config.models import DistilleryConfig
 from scripts.config.template_engine import DistilleryTemplateEngine
 from scripts.core.exceptions import BuildError, PublishError
 from scripts.core.util import download, sha256_file
-from scripts.recipes import BuildTarget, LinkMode, PackageKind, RecipeSet, Status
+from scripts.recipes import BuildTarget, LinkMode, PackageKind, RecipeSet, Status, source_url
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ class Builder:
             "name": r.name, "version": v.version, "major_minor": v.major_minor,
             "variant": target.variant, "arch": self.arch, "jobs": self.jobs(),
             "prefix": prefix, "destdir": str(stage), "deps_prefix": str(self.deps_prefix(target.variant)),
-            "srcdir": str(srcdir), "dep": deps,
+            "srcdir": str(srcdir), "dep": deps, "vars": dict(v.vars),
         }
 
     def _env(self, target: BuildTarget, ctx: Dict) -> Dict[str, str]:
@@ -172,6 +173,7 @@ class Builder:
             "CPPFLAGS": f"{cppflags} {env.get('CPPFLAGS', '')}".strip(),
             "LDFLAGS": ldflags,
             "PKG_CONFIG_PATH": pc, "PKG_CONFIG_LIBDIR": pc,
+            "PKG_CONFIG": "pkg-config --static",
             "PATH": f"{deps}/bin:{env.get('PATH', '')}",
             "SOURCE_DATE_EPOCH": str(self.epoch),
             "LC_ALL": "C", "TZ": "UTC",
@@ -208,6 +210,8 @@ class Builder:
                              f"(did the install step honour DESTDIR?)")
 
         self._cleanup_tree(content_root)
+        if r.bundle:
+            bundle_runtime(content_root)
         self._verify(target, content_root)
         self._strip(content_root)
 
@@ -234,7 +238,7 @@ class Builder:
 
     def _fetch_source(self, target: BuildTarget, ctx: Dict) -> Path:
         r, v = target.recipe, target.version
-        url = self.engine.render(v.url or r.source.url, ctx)
+        url = source_url(r, v, variant=target.variant, arch=self.arch)
         dest = Path(self.config.path.downloads) / url.rsplit("/", 1)[-1]
 
         ctx["source_url"] = url
@@ -309,6 +313,11 @@ class Builder:
                     + "\n  ".join(offenders))
             if r.kind == PackageKind.LIBRARY and shared:
                 logger.warning("%s: shared objects shipped by a static library: %s", target.key, shared)
+        elif r.bundle:
+            offenders = find_dynamic_executables(root, ignore_suffix=".bin")
+            if offenders:
+                raise BuildError(f"{target.key}: executables left unwrapped after bundling:\n  "
+                                 + "\n  ".join(offenders))
 
     @staticmethod
     def _strip(root: Path) -> None:

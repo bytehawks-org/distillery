@@ -1,0 +1,66 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: mariadb
+  kind: application
+  summary: "MariaDB server and client (relocatable bundle)"
+  license: "GPL-2.0-only"
+  website: "https://mariadb.org/"
+  # UNTESTED recipe: heavy build (needs ~6 GB RAM, 30+ min). Expect musl patches to be
+  # needed; promote to stable after the first green CI run.
+  status: experimental
+  link: relocatable
+  bundle: true
+  depends_on: [zlib, openssl, pcre2]
+
+  source:
+    url: "https://archive.mariadb.org/mariadb-{{ version }}/source/mariadb-{{ version }}.tar.gz"
+
+  versions:
+    - version: "10.11.19"
+      variants: [old-legacy]
+      series: "10.11"
+    - version: "11.4.13"
+      variants: [legacy]
+      series: "11.4"
+    - version: "11.8.9"
+      variants: [stable]
+      series: "11.8"
+    - version: "12.3.3"
+      variants: [stream]
+      series: "12"
+
+  upstream:
+    type: github-tags
+    repo: MariaDB/server
+    tag_regex: '^mariadb-(\d+\.\d+\.\d+)$'
+
+  env:
+    LDFLAGS: "-L{{ deps_prefix }}/lib -Wl,-z,relro,-z,now"
+
+  steps:
+    - name: configure
+      run: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_PREFIX_PATH="$DEPS" \
+          -DCMAKE_C_FLAGS="$CFLAGS" -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
+          -DWITH_SSL=system -DOPENSSL_ROOT_DIR="$DEPS" -DOPENSSL_USE_STATIC_LIBS=ON \
+          -DWITH_ZLIB=system -DWITH_PCRE=system \
+          -DWITH_UNIT_TESTS=OFF -DWITH_WSREP=OFF -DWITH_EMBEDDED_SERVER=OFF \
+          -DWITH_SYSTEMD=no -DWITH_MARIABACKUP=OFF -DWITH_NUMA=OFF -DWITH_LIBWRAP=OFF \
+          -DIGNORE_AIO_CHECK=ON -DWITH_URING=no \
+          -DPLUGIN_ROCKSDB=NO -DPLUGIN_MROONGA=NO -DPLUGIN_SPIDER=NO -DPLUGIN_CONNECT=NO \
+          -DPLUGIN_COLUMNSTORE=NO -DPLUGIN_TOKUDB=NO -DPLUGIN_OQGRAPH=NO -DPLUGIN_S3=NO
+    - name: build
+      run: |
+        cmake --build build -j"$JOBS"
+    - name: install
+      run: |
+        DESTDIR="$DESTDIR" cmake --install build
+
+  smoke_tests:
+    - run: |
+        "$ARTIFACT_ROOT/bin/mariadbd" --version | grep -q "{{ version }}"
+
+  tags: [database, sql, core]

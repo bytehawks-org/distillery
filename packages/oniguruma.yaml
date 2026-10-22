@@ -1,0 +1,38 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: oniguruma
+  kind: library
+  summary: "Regular expression library with multi-encoding support (PHP mbregex)"
+  license: "BSD-2-Clause"
+  website: "https://github.com/kkos/oniguruma"
+  status: stable
+  link: static
+
+  source:
+    url: "https://github.com/kkos/oniguruma/releases/download/v{{ version }}/onig-{{ version }}.tar.gz"
+
+  versions:
+    - version: "6.9.10"
+      sha256: "2a5cfc5ae259e4e97f86b68dfffc152cdaffe94e2060b770cb827238d769fc05"
+      variants: [all]
+      series: "6.9"
+
+  upstream:
+    type: github-releases
+    repo: kkos/oniguruma
+    tag_regex: '^v(\d+\.\d+\.\d+)$'
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static
+    - name: build
+      run: |
+        make -j"$JOBS"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR"
+
+  tags: [regex, php-dep]

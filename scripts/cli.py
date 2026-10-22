@@ -26,7 +26,7 @@ from scripts.core.util import download
 from scripts.planner import builder_image, plan
 from scripts.publish import RepositoryManager
 from scripts.publish.scan import scan_dist
-from scripts.recipes import RecipeSet
+from scripts.recipes import RecipeSet, source_url
 from scripts.upstream import check_updates
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -147,13 +147,23 @@ def _publish_dir(config: DistilleryConfig, dist: Path, force: bool) -> int:
         print(f"no artifacts found in {dist}")
         return 0
     failures = 0
+    rows = []
     for ref, files in artifacts:
         try:
             status = repos.publish(ref, files)
-            print(f"{ref.filename}: " + ", ".join(f"{k}={v}" for k, v in status.items()))
+            line = ", ".join(f"{k}={v}" for k, v in status.items())
         except DistilleryError as e:
             logger.error("%s", e)
             failures += 1
+            line = f"FAILED: {e}"
+        print(f"{ref.filename}: {line}")
+        rows.append((ref.filename, line))
+
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as f:
+            f.write("| artifact | result |\n|---|---|\n")
+            f.writelines(f"| `{n}` | {r} |\n" for n, r in rows)
     return 1 if failures else 0
 
 
@@ -170,10 +180,7 @@ def cmd_lock(ctx, args) -> int:
     for v in recipe.versions:
         if v.sha256 and not args.refresh:
             continue
-        url = (v.url or recipe.source.url).replace("{{ version }}", v.version) \
-            .replace("{{ name }}", recipe.name).replace("{{ major_minor }}", v.major_minor)
-        if "{{" in url:
-            raise DistilleryError(f"Cannot lock {recipe.name} {v.version}: URL uses unsupported template: {url}")
+        url = source_url(recipe, v, arch=ctx.config.defaults.build.arch)
         tmp = Path(ctx.config.path.downloads) / url.rsplit("/", 1)[-1]
         digest = download(url, tmp)
         print(f"{recipe.name} {v.version}: {digest}")
@@ -202,6 +209,28 @@ def cmd_check_updates(ctx, args) -> int:
         for u in updates:
             print(f"- **{u['package']}** ({','.join(u['variants'])}): {u['current']} → {u['latest']} "
                   f"(https://github.com/{u['repo']})")
+    return 0
+
+
+def cmd_builder_matrix(ctx, args) -> int:
+    """Matrix for the builder-image workflow: one row per variant."""
+    base = ctx.config.build_type.container.image_basename
+    rows = []
+    for name in ctx.config.list_variants():
+        v = ctx.config.get_variant(name)
+        rows.append({
+            "variant": name,
+            "alpine_version": v.metadata.alpine_version,
+            "image_primary": builder_image(ctx.config, name, "primary"),
+            "image_fallback": builder_image(ctx.config, name, "fallback"),
+        })
+    payload = json.dumps({"include": rows}, separators=(",", ":"))
+    out = os.environ.get("GITHUB_OUTPUT")
+    if out and args.format == "github":
+        with open(out, "a") as f:
+            f.write(f"matrix={payload}\n")
+    else:
+        print(payload)
     return 0
 
 
@@ -270,6 +299,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("check-updates", help="look for new upstream releases")
     s.add_argument("--format", choices=["json", "md"], default="md")
     s.set_defaults(fn=cmd_check_updates)
+
+    s = sub.add_parser("builder-matrix", help="matrix of builder images (one per variant)")
+    s.add_argument("--format", choices=["json", "github"], default="json")
+    s.set_defaults(fn=cmd_builder_matrix)
 
     s = sub.add_parser("image", help="print the builder image for a variant")
     s.add_argument("variant")

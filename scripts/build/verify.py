@@ -17,6 +17,8 @@ class ElfInfo:
     bits: int
     has_interp: bool
     has_dynamic: bool
+    interp: Optional[str] = None
+    is_exec_or_pie: bool = True
 
     @property
     def is_static(self) -> bool:
@@ -45,11 +47,24 @@ def read_elf(path: Path) -> Optional[ElfInfo]:
                 phentsize, phnum = struct.unpack(end + "HH", f.read(4))
 
             types = set()
+            interp = None
             for i in range(phnum):
                 f.seek(phoff + i * phentsize)
                 (p_type,) = struct.unpack(end + "I", f.read(4))
                 types.add(p_type)
-            return ElfInfo(bits, PT_INTERP in types, PT_DYNAMIC in types)
+                if p_type == PT_INTERP:
+                    f.seek(phoff + i * phentsize + (8 if bits == 64 else 4))
+                    if bits == 64:
+                        (off,) = struct.unpack(end + "Q", f.read(8))
+                        f.seek(phoff + i * phentsize + 32)
+                        (size,) = struct.unpack(end + "Q", f.read(8))
+                    else:
+                        (off,) = struct.unpack(end + "I", f.read(4))
+                        f.seek(phoff + i * phentsize + 16)
+                        (size,) = struct.unpack(end + "I", f.read(4))
+                    f.seek(off)
+                    interp = f.read(size).rstrip(b"\0").decode(errors="replace")
+            return ElfInfo(bits, PT_INTERP in types, PT_DYNAMIC in types, interp)
     except (OSError, struct.error):
         return None
 
@@ -62,11 +77,13 @@ def iter_files(root: Path):
                 yield p
 
 
-def find_dynamic_executables(root: Path) -> List[str]:
+def find_dynamic_executables(root: Path, ignore_suffix: Optional[str] = None) -> List[str]:
     """Executable ELF files under ``root`` that need a dynamic loader."""
     offenders = []
     for p in iter_files(root):
         if not os.access(p, os.X_OK) or p.suffix in (".so", ".a") or ".so." in p.name:
+            continue
+        if ignore_suffix and p.name.endswith(ignore_suffix):
             continue
         info = read_elf(p)
         if info and not info.is_static:

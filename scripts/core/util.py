@@ -23,15 +23,16 @@ def expand_env(value: Any) -> Any:
     A string that is *entirely* one reference resolves to the env value, the
     default, or ``None`` when neither exists (so unset secrets stay ``None``).
     References embedded in a longer string resolve to ``""`` when unset.
+    Like bash ``:-``, an empty variable counts as unset.
     """
     if not isinstance(value, str):
         return value
 
     whole = _ENV_RE.fullmatch(value)
     if whole:
-        return os.environ.get(whole.group(1), whole.group(2))
+        return os.environ.get(whole.group(1)) or whole.group(2)
 
-    return _ENV_RE.sub(lambda m: os.environ.get(m.group(1), m.group(2) or ""), value)
+    return _ENV_RE.sub(lambda m: os.environ.get(m.group(1)) or m.group(2) or "", value)
 
 
 def sha256_file(path: Path) -> str:

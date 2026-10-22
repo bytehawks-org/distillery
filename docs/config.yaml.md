@@ -43,6 +43,21 @@ config:
       # Whether to clean up temporary files after a failed build.
       cleanup_on_failure: false
 
+      # Where build steps run.
+      #   "container": the CLI spawns the builder image with Docker/Podman (local development).
+      #   "native":    the CLI already runs inside the builder image (CI job container on K3s).
+      executor: "container"
+
+      # Parallel jobs passed to make/cmake as $JOBS ("auto" = number of CPUs).
+      jobs: "auto"
+
+      # Toolchain flags exported to every recipe step. -fPIC lets static libraries be
+      # linked into both static executables and the shared modules of relocatable packages.
+      env:
+        CFLAGS: "-O2 -pipe -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
+        CXXFLAGS: "-O2 -pipe -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=/opt/bytehawks=."
+        LDFLAGS: "-static -Wl,-z,relro,-z,now"
+
     packaging:
       # The default packaging format for the build artifacts (e.g., tar.gz, zip).
       format: "tar.gz"
@@ -137,7 +152,7 @@ config:
     type:
       container:
         # The base name of the container image used for the build process.
-        image_basename: "builda-bar"
+        image_basename: "distillery-builder"
   
         # The runtime environment to use for the container (e.g., Docker or Podman).
         runtime: "docker"  # or "podman"
@@ -254,70 +269,53 @@ config:
         # Number of retry attempts for operations with the fallback registry.
         retry: 3
 
-  # Artifact repository configuration for storing compiled binaries.
+  # Artifact repositories for compiled packages.
   repository:
-    # Strategy for selecting the artifact repository.
-    # "primary-with-fallback" means the primary repository is used first, and the fallback is used if the primary fails.
-    strategy: "primary-with-fallback"
-  
+    # How artifacts are published:
+    #   "primary-only"          only the primary endpoint(s)
+    #   "primary-with-fallback" first endpoint that succeeds (fallback used on failure)
+    #   "mirror-all"            every endpoint must receive the artifact (Nexus AND GitHub)
+    # Downloads (dependency fetch) always try endpoints in order: primary, then fallback.
+    strategy: "mirror-all"
+
     primary:
       nexus:
-        # Specifies the type of the primary artifact repository.
-        type: "nexus"  # Optional but makes the configuration clearer.
-  
-        # The URL of the primary Nexus repository.
-        url: "https://registry.bytehawks.org/repository"
-  
-        # The name of the repository within Nexus where artifacts are stored.
-        repository: "packages"
-  
-        # Template for the path where artifacts are stored in the repository.
-        # Example: "{package}/{major_minor}/{full_version}".
+        type: "nexus"
+
+        # Nexus base URL, including the /repository suffix. ${VAR:-default} is supported.
+        url: "${NEXUS_URL:-http://nexus.nexus.svc.cluster.local:8081/repository}"
+
+        # Nexus "raw (hosted)" repository. Disable redeploy to make artifacts immutable.
+        repository: "bytehawks-packages"
+
+        # Directory layout inside the repository; the file name is
+        # <package>-<version>-<variant>-linux-<arch>.tar.gz (+ .sha256, .manifest.json, .sbom.cdx.json).
         path_template: "{package}/{major_minor}/{full_version}"
-  
-        # The username for authenticating with the Nexus repository.
+
         username: "${NEXUS_USER}"
-  
-        # The password for authenticating with the Nexus repository.
         password: "${NEXUS_PASSWORD}"
-  
-        # Timeout in seconds for operations with the Nexus repository.
+
+        # Set to false for self-signed certificates.
+        verify_tls: true
         timeout: 60
-  
-        # Number of retry attempts for operations with the Nexus repository.
         retry: 3
-  
+
     fallback:
-      s3:
-        # Specifies the type of the fallback artifact repository.
-        type: "s3"  # Optional but makes the configuration clearer.
-  
-        # The name of the S3 bucket used as the fallback repository.
-        bucket: "bytehawks-packages"
-  
-        # The AWS region where the S3 bucket is located.
-        region: "eu-south-1"
-  
-        # The endpoint URL for the S3 bucket.
-        # Optional but can be specified for custom endpoints.
-        endpoint: "https://s3.eu-south-1.amazonaws.com"
-  
-        # Template for the path where artifacts are stored in the S3 bucket.
-        # Example: "{package}/{major_minor}/{full_version}".
-        path_template: "{package}/{major_minor}/{full_version}"
-  
-        # The access key for authenticating with the S3 bucket.
-        access_key: "${AWS_ACCESS_KEY_ID}"
-  
-        # The secret key for authenticating with the S3 bucket.
-        secret_key: "${AWS_SECRET_ACCESS_KEY}"
-  
-        # Timeout in seconds for operations with the S3 bucket.
-        timeout: 60
-  
-        # Number of retry attempts for operations with the S3 bucket.
+      github:
+        type: "github"
+
+        # Repository whose Releases hold the artifacts: one release per package version
+        # (tag from tag_template), one asset per file, all variants in the same release.
+        repo: "bytehawks-org/artifacts"
+        tag_template: "{package}-{full_version}"
+
+        # Token with "contents: write" on the repository above (fine-grained PAT).
+        token: "${ARTIFACTS_GITHUB_TOKEN}"
+        timeout: 120
         retry: 3
-  
+
+      # type "s3" is still accepted by the schema but no uploader is implemented yet.
+
   # Logging configuration for observability.
   logging:
     # The logging level to use (e.g., DEBUG, INFO, WARN, ERROR).

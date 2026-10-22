@@ -9,6 +9,8 @@ from typing import Dict, Iterable, List, Optional
 
 import yaml
 
+from scripts.config.template_engine import DistilleryTemplateEngine
+
 from scripts.core.exceptions import PackageError
 from scripts.recipes.models import PackageKind, Recipe, RecipeFile, Status, VersionSpec
 
@@ -188,3 +190,14 @@ class RecipeSet:
             cyclic = sorted(set(self.recipes) - set(order))
             raise PackageError(f"Dependency cycle among: {', '.join(cyclic)}")
         return order
+
+
+_engine = DistilleryTemplateEngine(max_passes=3, strict=True)
+
+
+def source_url(recipe: Recipe, version: VersionSpec, **extra) -> str:
+    """Render the source URL of ``version`` (Jinja: name, version, major_minor, vars, ...)."""
+    ctx = {"name": recipe.name, "version": version.version, "major_minor": version.major_minor,
+           "vars": dict(version.vars)}
+    ctx.update(extra)
+    return _engine.render(version.url or recipe.source.url, ctx)

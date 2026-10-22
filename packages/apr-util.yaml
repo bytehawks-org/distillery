@@ -1,0 +1,41 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: apr-util
+  kind: library
+  summary: "Apache Portable Runtime utility library"
+  license: "Apache-2.0"
+  website: "https://apr.apache.org/"
+  status: experimental
+  link: static
+  depends_on: [apr, expat]
+
+  source:
+    url: "https://archive.apache.org/dist/apr/apr-util-{{ version }}.tar.bz2"
+
+  versions:
+    - version: "1.6.5"
+      variants: [all]
+      series: "1.6"
+
+  upstream:
+    type: github-tags
+    repo: apache/apr-util
+    tag_regex: '^(\d+\.\d+\.\d+)$'
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static \
+          --with-apr="$DEPS" --with-expat="$DEPS" \
+          --without-sqlite3 --without-pgsql --without-mysql --without-berkeley-db \
+          --without-crypto --without-ldap
+    - name: build
+      run: |
+        make -j"$JOBS"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR"
+
+  tags: [httpd-dep]

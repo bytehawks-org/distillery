@@ -1,0 +1,61 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: postgresql
+  kind: application
+  summary: "PostgreSQL server, client tools and contrib modules (relocatable bundle)"
+  license: "PostgreSQL"
+  website: "https://www.postgresql.org/"
+  # UNTESTED recipe: promote to stable after the first green CI run.
+  status: experimental
+  # The server loads plpgsql and extensions with dlopen(), so it cannot be fully static:
+  # musl loader + libraries are bundled instead (bundle: true).
+  link: relocatable
+  bundle: true
+  depends_on: [zlib, openssl]
+
+  source:
+    url: "https://ftp.postgresql.org/pub/source/v{{ version }}/postgresql-{{ version }}.tar.bz2"
+
+  versions:
+    - version: "14.24"
+      variants: [old-legacy]
+      series: "14"
+    - version: "16.15"
+      variants: [legacy]
+      series: "16"
+    - version: "17.11"
+      variants: [stable]
+      series: "17"
+    - version: "18.6"
+      variants: [stream]
+      series: "18"
+
+  upstream:
+    type: github-tags
+    repo: postgres/postgres
+    tag_regex: '^REL_(\d+_\d+)$'
+
+  env:
+    # dynamic executables (no -static); static libs from deps are linked in (PIC)
+    LDFLAGS: "-L{{ deps_prefix }}/lib -Wl,-z,relro,-z,now"
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-rpath \
+          --with-openssl --with-zlib --without-readline --without-icu
+    - name: build
+      run: |
+        make -j"$JOBS" world-bin
+    - name: install
+      run: |
+        make install-world-bin DESTDIR="$DESTDIR"
+
+  smoke_tests:
+    - run: |
+        "$ARTIFACT_ROOT/bin/postgres" --version | grep -q "{{ version.split('.')[0] }}"
+        "$ARTIFACT_ROOT/bin/psql" --version
+
+  tags: [database, sql, core]

@@ -1,0 +1,49 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: openjdk
+  kind: application
+  summary: "OpenJDK (Eclipse Temurin musl builds) repackaged as a relocatable bundle"
+  license: "GPL-2.0-with-classpath-exception"
+  website: "https://adoptium.net/"
+  # UNTESTED recipe. The JVM cannot be statically linked: the official musl JDK is
+  # repackaged and made host-independent by bundling the musl loader and libraries.
+  status: experimental
+  link: relocatable
+  bundle: true
+
+  source:
+    type: repack
+    url: "https://github.com/adoptium/temurin{{ version.split('.')[0] }}-binaries/releases/download/jdk-{{ vars.tag }}/OpenJDK{{ version.split('.')[0] }}U-jdk_x64_alpine-linux_hotspot_{{ vars.file }}.tar.gz"
+
+  versions:
+    - version: "17.0.20.1"
+      variants: [old-legacy]
+      vars: {tag: "17.0.20.1%2B1", file: "17.0.20.1_1"}
+      series: "17"
+    - version: "21.0.13"
+      variants: [legacy]
+      vars: {tag: "21.0.13%2B9", file: "21.0.13_9"}
+      series: "21"
+    - version: "25.0.4.1"
+      variants: [stable]
+      vars: {tag: "25.0.4.1%2B1", file: "25.0.4.1_1"}
+      series: "25"
+    - version: "26.0.2.1"
+      variants: [stream]
+      vars: {tag: "26.0.2.1%2B1", file: "26.0.2.1_1"}
+      series: "26"
+
+  # musl runtime libraries the JVM needs, bundled next to the loader
+  steps:
+    - name: install
+      run: |
+        install -d "$DESTDIR$PREFIX"
+        cp -a . "$DESTDIR$PREFIX/"
+
+  smoke_tests:
+    - run: |
+        "$ARTIFACT_ROOT/bin/java" -version 2>&1 | grep -q "{{ version.split('.')[0] }}"
+
+  tags: [java, language, core]

@@ -1,0 +1,37 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: apr
+  kind: library
+  summary: "Apache Portable Runtime"
+  license: "Apache-2.0"
+  website: "https://apr.apache.org/"
+  status: experimental
+  link: static
+
+  source:
+    url: "https://archive.apache.org/dist/apr/apr-{{ version }}.tar.bz2"
+
+  versions:
+    - version: "1.7.6"
+      variants: [all]
+      series: "1.7"
+
+  upstream:
+    type: github-tags
+    repo: apache/apr
+    tag_regex: '^(1\.7\.\d+)$'
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static
+    - name: build
+      run: |
+        make -j"$JOBS"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR"
+
+  tags: [httpd-dep]

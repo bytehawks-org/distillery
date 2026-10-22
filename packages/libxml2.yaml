@@ -1,0 +1,40 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: libxml2
+  kind: library
+  summary: "XML C parser and toolkit"
+  license: "MIT"
+  website: "https://gitlab.gnome.org/GNOME/libxml2"
+  status: experimental
+  link: static
+  depends_on: [zlib]
+
+  source:
+    url: "https://download.gnome.org/sources/libxml2/{{ major_minor }}/libxml2-{{ version }}.tar.xz"
+
+  versions:
+    - version: "2.15.4"
+      variants: [all]
+      series: "2.15"
+
+  upstream:
+    type: github-tags
+    repo: GNOME/libxml2
+    tag_regex: '^v(\d+\.\d+\.\d+)$'
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static \
+          --with-zlib="$DEPS" --with-iconv \
+          --without-python --without-lzma --without-icu --without-readline
+    - name: build
+      run: |
+        make -j"$JOBS" LDFLAGS="$LDFLAGS -all-static"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR" LDFLAGS="$LDFLAGS -all-static"
+
+  tags: [xml, php-dep]

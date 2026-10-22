@@ -1,0 +1,53 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: httpd
+  kind: application
+  summary: "Apache HTTP Server (all modules compiled in, no DSO)"
+  license: "Apache-2.0"
+  website: "https://httpd.apache.org/"
+  # UNTESTED recipe: promote to stable after the first green CI run.
+  status: experimental
+  link: static
+  depends_on: [zlib, pcre2, openssl, apr, apr-util]
+
+  source:
+    url: "https://archive.apache.org/dist/httpd/httpd-{{ version }}.tar.bz2"
+
+  versions:
+    - version: "2.4.69"
+      variants: [all]
+      series: "2.4"
+
+  upstream:
+    type: github-tags
+    repo: apache/httpd
+    tag_regex: '^(2\.4\.\d+)$'
+
+  env:
+    LIBS: "-ldl -lpthread"
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" \
+          --with-mpm=event --enable-mods-static=most --disable-so \
+          --enable-ssl --with-ssl="$DEPS" --with-z="$DEPS" \
+          --with-apr="$DEPS/bin/apr-1-config" --with-apr-util="$DEPS/bin/apu-1-config" \
+          --with-pcre="$DEPS/bin/pcre2-config" \
+          --enable-proxy --enable-proxy-fcgi --enable-rewrite --enable-deflate \
+          --enable-http2=no
+    - name: build
+      run: |
+        make -j"$JOBS" EXTRA_LDFLAGS="-all-static"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR"
+
+  smoke_tests:
+    - run: |
+        "$ARTIFACT_ROOT/bin/httpd" -v | grep -q "Apache/{{ version }}"
+        "$ARTIFACT_ROOT/bin/httpd" -l | grep -q mod_ssl
+
+  tags: [web, core]

@@ -1,0 +1,39 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: expat
+  kind: library
+  summary: "Stream-oriented XML parser library"
+  license: "MIT"
+  website: "https://libexpat.github.io/"
+  status: stable
+  link: static
+
+  source:
+    url: "https://github.com/libexpat/libexpat/releases/download/R_{{ version | replace('.', '_') }}/expat-{{ version }}.tar.xz"
+
+  versions:
+    - version: "2.9.0"
+      sha256: "1e6371862cc31999b368c3b89b49994f0677e1bab5f1b2b85ae3741f5d803051"
+      variants: [all]
+      series: "2"
+
+  upstream:
+    type: github-releases
+    repo: libexpat/libexpat
+    tag_regex: '^R_(\d+_\d+_\d+)$'
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static \
+          --without-xmlwf --without-docbook --without-examples --without-tests
+    - name: build
+      run: |
+        make -j"$JOBS"
+    - name: install
+      run: |
+        make install DESTDIR="$DESTDIR"
+
+  tags: [xml, core]

@@ -1,0 +1,22 @@
+# Resources for the builder (job) container. Compilers are memory hungry:
+# the MariaDB build alone wants ~6 GiB. Adjust to the K3s node.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: distillery-hook-extension
+  namespace: arc-runners
+data:
+  content: |
+    metadata:
+      annotations:
+        example: "distillery-builder"
+    spec:
+      containers:
+        - name: "$job"
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi

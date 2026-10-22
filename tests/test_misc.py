@@ -116,3 +116,25 @@ def test_check_updates_respects_series(tmp_path):
     t = httpx.MockTransport(lambda req: httpx.Response(200, json=releases))
     ups = check_updates(rs, transport=t)
     assert [(u["current"], u["latest"]) for u in ups] == [("1.28.1", "1.28.3")]
+
+
+@needs_gcc
+def test_bundle_makes_dynamic_binary_relocatable(tmp_path):
+    from scripts.build.bundle import bundle_runtime
+    from scripts.build.verify import find_dynamic_executables
+
+    src = tmp_path / "m.c"
+    src.write_text('#include <math.h>\n#include <stdio.h>\nint main(int c,char**v){printf("%.1f %s\\n",sqrt(16.0),v[1]);return 0;}')
+    tree = tmp_path / "tree"
+    (tree / "bin").mkdir(parents=True)
+    subprocess.run(["gcc", str(src), "-o", str(tree / "bin" / "m"), "-lm"], check=True)
+
+    bundle_runtime(tree)
+
+    assert (tree / "bin" / "m.bin").exists()
+    assert find_dynamic_executables(tree, ignore_suffix=".bin") == []
+    moved = tmp_path / "elsewhere" / "deep"
+    moved.parent.mkdir()
+    shutil.copytree(tree, moved)
+    out = subprocess.run(["env", "-i", str(moved / "bin" / "m"), "ok"], capture_output=True, text=True)
+    assert out.stdout.strip() == "4.0 ok", out.stderr

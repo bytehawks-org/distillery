@@ -1,0 +1,44 @@
+name: Upstream watch
+
+# Weekly: compare the versions in packages/*.yaml with upstream releases and keep
+# one open issue ("upstream-updates") listing what can be bumped.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 1"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Check upstream releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m scripts.cli check-updates --format md > report.md
+      - name: Update issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if grep -q "up to date" report.md; then
+            echo "Nothing to report"; exit 0
+          fi
+          { echo "Newer upstream releases than the versions pinned in \`packages/\`."; echo
+            echo "Bump the version, run \`python -m scripts.cli lock <package>\` and open a PR."; echo
+            cat report.md; } > body.md
+          gh label create upstream-updates --color 0E8A16 2>/dev/null || true
+          n=$(gh issue list --label upstream-updates --state open --json number -q '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue edit "$n" --body-file body.md
+          else
+            gh issue create --title "Upstream updates available" --label upstream-updates --body-file body.md
+          fi

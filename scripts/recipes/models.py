@@ -40,6 +40,8 @@ class VersionSpec(BaseModel):
     sha256: Optional[str] = Field(None, description="sha256 of the source archive")
     variants: List[str] = Field(..., min_length=1, description="Variant names, or ['all']")
     url: Optional[str] = Field(None, description="Overrides source.url for this version")
+    vars: Dict[str, str] = Field(
+        default_factory=dict, description="Extra per-version template variables ({{ vars.key }})")
     series: Optional[str] = Field(
         None, description="Version prefix tracked by check-updates (e.g. '1.28'); "
                           "default: any newer upstream release")
@@ -111,6 +113,9 @@ class Recipe(BaseModel):
     website: str
     status: Status = Status.STABLE
     link: LinkMode = LinkMode.STATIC
+    bundle: bool = Field(
+        default=False,
+        description="relocatable only: ship the musl loader + shared libs and wrap dynamic executables")
     prefix: Optional[str] = Field(
         None, description="Install prefix override (default from config path.generated)")
     depends_on: List[str] = Field(default_factory=list)
@@ -141,6 +146,8 @@ class Recipe(BaseModel):
             raise ValueError("package cannot depend on itself")
         if self.kind == PackageKind.LIBRARY and self.link != LinkMode.STATIC:
             raise ValueError("libraries must be link: static")
+        if self.bundle and self.link != LinkMode.RELOCATABLE:
+            raise ValueError("bundle: true requires link: relocatable")
         return self
 
 

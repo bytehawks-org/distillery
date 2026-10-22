@@ -1,0 +1,75 @@
+version: 1.0.0
+schema: "distillery-package"
+
+package:
+  name: php
+  kind: application
+  summary: "PHP CLI + FPM, static, WordPress-ready extension set"
+  license: "PHP-3.01"
+  website: "https://www.php.net/"
+  # UNTESTED recipe: promote to stable after the first green CI run.
+  status: experimental
+  link: static
+  depends_on: [zlib, openssl, curl, libxml2, oniguruma]
+
+  source:
+    url: "https://www.php.net/distributions/php-{{ version }}.tar.xz"
+
+  versions:
+    - version: "8.2.35"
+      variants: [old-legacy]
+      series: "8.2"
+    - version: "8.3.36"
+      variants: [legacy]
+      series: "8.3"
+    - version: "8.4.27"
+      variants: [stable]
+      series: "8.4"
+    - version: "8.5.12"
+      variants: [stream]
+      series: "8.5"
+
+  upstream:
+    type: github-tags
+    repo: php/php-src
+    tag_regex: '^php-(\d+\.\d+\.\d+)$'
+
+  env:
+    # static libs needed by the extensions' configure checks
+    LIBS: "-ldl -lpthread -lm"
+
+  steps:
+    - name: configure
+      run: |
+        ./configure --prefix="$PREFIX" \
+          --with-config-file-path="$PREFIX/etc" --with-config-file-scan-dir="$PREFIX/etc/php.d" \
+          --disable-all --disable-cgi --disable-phpdbg --without-pear \
+          --enable-cli --enable-fpm \
+          --enable-ctype --enable-dom --enable-fileinfo --enable-filter --enable-mbstring \
+          --enable-opcache --enable-pcntl --enable-posix --enable-session --enable-simplexml \
+          --enable-sockets --enable-tokenizer --enable-xml --enable-xmlreader --enable-xmlwriter \
+          --enable-bcmath --enable-exif --enable-calendar --enable-mysqlnd \
+          --with-mysqli=mysqlnd --with-pdo-mysql=mysqlnd \
+          --with-openssl --with-zlib --with-curl --with-libxml --with-iconv
+    - name: build
+      run: |
+        make -j"$JOBS" EXTRA_LDFLAGS_PROGRAM="-all-static"
+    - name: install
+      run: |
+        make install INSTALL_ROOT="$DESTDIR"
+        install -d "$DESTDIR$PREFIX/etc/php.d"
+        install -m644 php.ini-production "$DESTDIR$PREFIX/etc/php.ini-production"
+
+  smoke_tests:
+    - description: "version and extension set"
+      run: |
+        "$ARTIFACT_ROOT/bin/php" -n -v | grep -q "PHP {{ version }}"
+        mods="$("$ARTIFACT_ROOT/bin/php" -n -m)"
+        for m in curl dom mbstring mysqli mysqlnd openssl pdo_mysql xml zlib; do
+          echo "$mods" | grep -qix "$m"
+        done
+    - description: "FPM binary is present and static"
+      run: |
+        "$ARTIFACT_ROOT/sbin/php-fpm" -v | grep -q "PHP {{ version }}"
+
+  tags: [php, language, core]
