@@ -43,8 +43,9 @@ def _lib_dirs(root: Path) -> str:
     return ":".join(sorted(dirs))
 
 
-def _ldd(path: Path, env: Dict[str, str]) -> Set[Path]:
-    proc = subprocess.run(["ldd", str(path)], capture_output=True, text=True, env=env)
+def _ldd(loader: Path, path: Path, env: Dict[str, str]) -> Set[Path]:
+    """Resolve shared library dependencies with the target's own loader (``--list``)."""
+    proc = subprocess.run([str(loader), "--list", str(path)], capture_output=True, text=True, env=env)
     found: Set[Path] = set()
     for line in proc.stdout.splitlines():
         line = line.strip()
@@ -78,7 +79,7 @@ def bundle_runtime(root: Path) -> None:
     env = dict(os.environ, LD_LIBRARY_PATH=_lib_dirs(root))
     needed: Set[Path] = set()
     for p, _i in dynamic:
-        needed |= _ldd(p, env)
+        needed |= _ldd(loader_path, p, env)
 
     root_resolved = root.resolve()
     for lib in sorted(needed):

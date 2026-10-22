@@ -55,7 +55,8 @@ package:
 
   smoke_tests:
     - run: |
-        "$ARTIFACT_ROOT/bin/postgres" --version | grep -q "{{ version.split('.')[0] }}"
+        grep -q "{{ version.split('.')[0] }}" <<<"$("$ARTIFACT_ROOT/bin/postgres" --version)"
         "$ARTIFACT_ROOT/bin/psql" --version
+        "$ARTIFACT_ROOT/bin/initdb" --version
 
   tags: [database, sql, core]

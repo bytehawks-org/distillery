@@ -86,3 +86,42 @@ def test_checksum_mismatch_rejected(config, fake_packages, tmp_path):
     b = make_builder(config, fake_packages, tmp_path)
     with pytest.raises(BuildError, match="sha256 mismatch"):
         b.build(b.recipes.target("foo", "stable"))
+
+
+@needs_gcc
+def test_static_application_must_not_ship_shared_objects(config, fake_packages, tmp_path):
+    config.defaults.build.env = {"LDFLAGS": "-static"}
+    p = fake_packages / "bar.yaml"
+    p.write_text(p.read_text().replace(
+        'install -D bar "$DESTDIR$PREFIX/bin/bar"',
+        'install -D bar "$DESTDIR$PREFIX/bin/bar"; mkdir -p "$DESTDIR$PREFIX/lib"; touch "$DESTDIR$PREFIX/lib/mod.so"'))
+    b = make_builder(config, fake_packages, tmp_path)
+    with pytest.raises(BuildError, match="shared objects"):
+        b.build(b.recipes.target("bar", "stable"))
+
+
+def test_container_command_is_hardened(config, tmp_path, monkeypatch):
+    from scripts.build import container
+
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured.setdefault("cmds", []).append(cmd)
+
+        class R:
+            returncode = 0
+        return R()
+
+    monkeypatch.setattr(container.subprocess, "run", fake_run)
+    config.build_type.container.pull_policy = "never"
+    container.run_build_in_container(config, variant="stable", repo_root=REPO,
+                                     host_base=tmp_path / "w", host_output=tmp_path / "d",
+                                     cli_args=["build", "nginx"])
+    cmd = captured["cmds"][-1]
+    joined = " ".join(cmd)
+    assert cmd[:3] == ["docker", "run", "--rm"]
+    assert "--cap-drop ALL" in joined and "no-new-privileges" in joined
+    assert "-u 1024:1024" in joined
+    assert f"{REPO}:/src:ro" in joined
+    assert cmd[-3:] == ["scripts.cli", "build", "nginx"][-3:] or cmd[-2:] == ["build", "nginx"]
+    assert "distillery-builder:stable" in joined

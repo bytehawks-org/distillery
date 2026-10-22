@@ -19,18 +19,22 @@ package:
 
   versions:
     - version: "17.0.20.1"
+      sha256: "0c4fcdefa2737ccd66e049245fdb9dc431f91796182141204cd5f8192cb288e6"
       variants: [old-legacy]
       vars: {tag: "17.0.20.1%2B1", file: "17.0.20.1_1"}
       series: "17"
     - version: "21.0.13"
+      sha256: "dc453842ee3f24710258f42a95bdfe5c2bfc0ca9d70c12f950ead82aee0c8361"
       variants: [legacy]
       vars: {tag: "21.0.13%2B9", file: "21.0.13_9"}
       series: "21"
     - version: "25.0.4.1"
+      sha256: "f18648ee5ce45261f50dc9493fdae7ddebaa2a7a857cafda3e2a448a79c03dee"
       variants: [stable]
       vars: {tag: "25.0.4.1%2B1", file: "25.0.4.1_1"}
       series: "25"
     - version: "26.0.2.1"
+      sha256: "7f0ebccd9a8b4a554f5caac8768f28ff9d1b1b74367db7d14639b11c9b3d9e41"
       variants: [stream]
       vars: {tag: "26.0.2.1%2B1", file: "26.0.2.1_1"}
       series: "26"
@@ -44,6 +48,6 @@ package:
 
   smoke_tests:
     - run: |
-        "$ARTIFACT_ROOT/bin/java" -version 2>&1 | grep -q "{{ version.split('.')[0] }}"
+        grep -q "{{ version.split('.')[0] }}" <<<"$("$ARTIFACT_ROOT/bin/java" -version 2>&1)"
 
   tags: [java, language, core]

@@ -47,7 +47,7 @@ package:
 
   smoke_tests:
     - run: |
-        "$ARTIFACT_ROOT/bin/httpd" -v | grep -q "Apache/{{ version }}"
-        "$ARTIFACT_ROOT/bin/httpd" -l | grep -q mod_ssl
+        grep -q "Apache/{{ version }}" <<<"$("$ARTIFACT_ROOT/bin/httpd" -v)"
+        grep -q mod_ssl <<<"$("$ARTIFACT_ROOT/bin/httpd" -l)"
 
   tags: [web, core]

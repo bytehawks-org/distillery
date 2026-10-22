@@ -61,6 +61,6 @@ package:
 
   smoke_tests:
     - run: |
-        "$ARTIFACT_ROOT/bin/mariadbd" --version | grep -q "{{ version }}"
+        grep -q "{{ version }}" <<<"$("$ARTIFACT_ROOT/bin/mariadbd" --version)"
 
   tags: [database, sql, core]

@@ -38,9 +38,10 @@ package:
       run: |
         {% set target = {'amd64': 'linux-x86_64', 'arm64': 'linux-aarch64'}[arch] %}
         # openssldir=/etc/ssl: static binaries pick up the host CA store
+        # no-atexit: no atexit() handler, required when linking libcrypto into shared objects (libpq)
         ./Configure {{ target }} \
           --prefix="$PREFIX" --openssldir=/etc/ssl --libdir=lib \
-          no-shared no-tests no-docs -static
+          no-shared no-tests no-docs no-atexit -static
     - name: build
       run: |
         make -j"$JOBS"
@@ -51,6 +52,6 @@ package:
   smoke_tests:
     - description: "openssl binary runs and is the expected version"
       run: |
-        "$ARTIFACT_ROOT/bin/openssl" version | grep -q "{{ version }}"
+        grep -q "{{ version }}" <<<"$("$ARTIFACT_ROOT/bin/openssl" version)"
 
   tags: [tls, crypto, core]

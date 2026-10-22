@@ -59,8 +59,8 @@ package:
     - description: "binary reports the expected version and TLS support"
       run: |
         out="$("$ARTIFACT_ROOT/sbin/nginx" -V 2>&1)"
-        echo "$out" | grep -q "nginx/{{ version }}"
-        echo "$out" | grep -q "built with OpenSSL"
+        grep -q "nginx/{{ version }}" <<<"$out"
+        grep -q "built with OpenSSL" <<<"$out"
     - description: "default configuration is valid"
       run: |
         "$ARTIFACT_ROOT/sbin/nginx" -t -p "$ARTIFACT_ROOT" -c conf/nginx.conf

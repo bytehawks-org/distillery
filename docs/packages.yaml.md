@@ -70,6 +70,11 @@ Jinja variables available in `url`, `env`, `steps` and `smoke_tests`: `name`, `v
 `arch`, `jobs`, `prefix`, `destdir`, `deps_prefix`, `srcdir`, `dep` (name → version of each dependency), `vars`.
 Because the scripts are Jinja templates, avoid `{{`, `{%` and `${#` in shell code (use `${var}` forms).
 
+## Shell pitfalls
+
+- Steps run with `set -euo pipefail`: `cmd | grep -q x` can die with exit 141 (SIGPIPE) because `grep -q` exits early.
+  Use `grep -q x <<<"$(cmd)"` in smoke tests.
+
 ## Static linking checklist
 
 - Autotools projects using libtool swallow `-static`; build with `make LDFLAGS="$LDFLAGS -all-static"` (see `pcre2`, `curl`).

@@ -47,6 +47,6 @@ package:
 
   smoke_tests:
     - run: |
-        "$ARTIFACT_ROOT/bin/curl" --version | grep -q "libcurl/{{ version }}"
+        grep -q "libcurl/{{ version }}" <<<"$("$ARTIFACT_ROOT/bin/curl" --version)"
 
   tags: [http, php-dep]

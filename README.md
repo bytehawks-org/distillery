@@ -31,13 +31,15 @@ plus `.sha256`, `.manifest.json` (sources, deps, file inventory with hashes, bui
 |---|---|---|---|
 | zlib, pcre2, openssl, expat, oniguruma, curl | lib | static | **stable** — built, verified static, smoke-tested |
 | nginx | app | static | **stable** — built, verified static, smoke-tested |
-| libxml2, apr, apr-util | lib | static | experimental — recipe only |
-| httpd, php (CLI+FPM) | app | static | experimental — recipe only |
-| postgresql, mariadb | app | relocatable + bundle | experimental — recipe only |
-| openjdk (Temurin musl repack) | app | relocatable + bundle | experimental — recipe only |
+| libxml2, apr, apr-util | lib | static | experimental — built locally (musl) with older upstream versions |
+| httpd, php (CLI+FPM, OPcache built in) | app | static | experimental — built and smoke-tested locally (musl) with older upstream versions |
+| postgresql | app | relocatable + bundle | experimental — built, `initdb`/server/`pgcrypto` verified on a glibc host (musl bundle) |
+| mariadb | app | relocatable + bundle | experimental — **untested** recipe |
+| openjdk (Temurin musl repack) | app | relocatable + bundle | experimental — sources pinned, repack verified; bundling **untested** |
 
 *Experimental* packages are skipped by CI unless requested (`--include-experimental` / workflow input).
-Promote one to `stable` (and pin its `sha256` with `lock`) after its first green CI run. Honest limits:
+Promote one to `stable` (and pin its `sha256` with `lock`) after its first green CI run on the real Alpine builder
+images (the local checks above used a Debian `musl-gcc` toolchain, no Docker image build was possible in the dev sandbox). Honest limits:
 
 - **PostgreSQL / MariaDB** load modules with `dlopen()` (plpgsql, plugins) → they cannot be fully static; they ship as relocatable bundles.
 - **OpenJDK** is the official Temurin musl build repackaged (a JVM cannot be statically linked), not compiled from source.

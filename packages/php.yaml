@@ -39,6 +39,35 @@ package:
     LIBS: "-ldl -lpthread -lm"
 
   steps:
+    - name: static-opcache
+      run: |
+        # OPcache is hard-wired as a shared zend_extension. A static binary cannot dlopen it,
+        # so build it in and register the zend_extension from a tiny internal module.
+        sed -i -e 's/ext_shared=yes/ext_shared=no/' \
+               -e 's/shared,,"-Wno-implicit-fallthrough/$ext_shared,,"-Wno-implicit-fallthrough/' \
+               ext/opcache/config.m4
+        cat > ext/opcache/php_opcache.h <<'EOF_H'
+        #ifndef PHP_OPCACHE_H
+        #define PHP_OPCACHE_H
+        #include "php.h"
+        extern zend_module_entry opcache_static_module_entry;
+        #define phpext_opcache_ptr (&opcache_static_module_entry)
+        #endif
+        EOF_H
+        cat >> ext/opcache/ZendAccelerator.c <<'EOF_C'
+
+        #ifndef COMPILE_DL_OPCACHE
+        static PHP_MINIT_FUNCTION(opcache_static) {
+            zend_register_extension(&zend_extension_entry, NULL);
+            return SUCCESS;
+        }
+        zend_module_entry opcache_static_module_entry = {
+            STANDARD_MODULE_HEADER, "opcache-static", NULL, PHP_MINIT(opcache_static),
+            NULL, NULL, NULL, NULL, "1.0", STANDARD_MODULE_PROPERTIES
+        };
+        #endif
+        EOF_C
+        ./buildconf --force
     - name: configure
       run: |
         ./configure --prefix="$PREFIX" \
@@ -48,7 +77,7 @@ package:
           --enable-ctype --enable-dom --enable-fileinfo --enable-filter --enable-mbstring \
           --enable-opcache --enable-pcntl --enable-posix --enable-session --enable-simplexml \
           --enable-sockets --enable-tokenizer --enable-xml --enable-xmlreader --enable-xmlwriter \
-          --enable-bcmath --enable-exif --enable-calendar --enable-mysqlnd \
+          --enable-pdo --enable-bcmath --enable-exif --enable-calendar --enable-mysqlnd \
           --with-mysqli=mysqlnd --with-pdo-mysql=mysqlnd \
           --with-openssl --with-zlib --with-curl --with-libxml --with-iconv
     - name: build
@@ -63,13 +92,17 @@ package:
   smoke_tests:
     - description: "version and extension set"
       run: |
-        "$ARTIFACT_ROOT/bin/php" -n -v | grep -q "PHP {{ version }}"
+        grep -q "PHP {{ version }}" <<<"$("$ARTIFACT_ROOT/bin/php" -n -v)"
         mods="$("$ARTIFACT_ROOT/bin/php" -n -m)"
-        for m in curl dom mbstring mysqli mysqlnd openssl pdo_mysql xml zlib; do
-          echo "$mods" | grep -qix "$m"
+        for m in curl dom mbstring mysqli mysqlnd openssl pdo_mysql xml zlib "Zend OPcache"; do
+          grep -qix "$m" <<<"$mods"
         done
+    - description: "OPcache is active"
+      run: |
+        "$ARTIFACT_ROOT/bin/php" -n -d opcache.enable_cli=1 \
+          -r 'exit(opcache_get_status(false)["opcache_enabled"] ? 0 : 1);'
     - description: "FPM binary is present and static"
       run: |
-        "$ARTIFACT_ROOT/sbin/php-fpm" -v | grep -q "PHP {{ version }}"
+        grep -q "PHP {{ version }}" <<<"$("$ARTIFACT_ROOT/sbin/php-fpm" -v)"
 
   tags: [php, language, core]

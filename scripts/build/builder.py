@@ -311,7 +311,10 @@ class Builder:
                 raise BuildError(
                     f"{target.key}: link=static but these executables need a dynamic loader:\n  "
                     + "\n  ".join(offenders))
-            if r.kind == PackageKind.LIBRARY and shared:
+            if shared and r.kind == PackageKind.APPLICATION:
+                raise BuildError(f"{target.key}: link=static but shared objects were installed "
+                                 f"(a static binary cannot dlopen them):\n  " + "\n  ".join(shared))
+            if shared:
                 logger.warning("%s: shared objects shipped by a static library: %s", target.key, shared)
         elif r.bundle:
             offenders = find_dynamic_executables(root, ignore_suffix=".bin")
