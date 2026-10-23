@@ -15,9 +15,9 @@ package:
         full_version: 3.6.0
     website: https://www.{{ name }}.org/
     git:
-      repo: https://github.com/{{ name }}/{{ name }}/
+      repo: https://github.com/{{ name }}/{{ name }}
       release_url_name_template: "{{ name }}-{{ full_version }}.tar.gz"
-      release_download_url_template: "{{ git.repo }}/releases/tag/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+      release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
     commands:
       pre: |
         wget -O {{ config.default_download_path }}/{{ name }}-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
@@ -33,6 +33,23 @@ package:
           no-docs
       make: make
       install: make install_sw
+    runtime:
+      env:
+        - name: BH_OPENSSL_CONF
+          type: path
+          default: "{{ default_prefix }}/etc/ssl/openssl.cnf"
+          aliases: [OPENSSL_CONF]
+          file_key: openssl.conf
+          cli: --conf
+          native_env: OPENSSL_CONF
+          description: OpenSSL configuration file
+        - name: BH_OPENSSL_CERT_DIR
+          type: path
+          default: "{{ default_prefix }}/etc/ssl/certs"
+          aliases: [SSL_CERT_DIR]
+          file_key: openssl.cert_dir
+          native_env: SSL_CERT_DIR
+          description: Trusted CA certificates directory
     tags:
       - library
       - application
