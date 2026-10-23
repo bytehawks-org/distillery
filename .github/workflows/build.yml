@@ -84,7 +84,8 @@ jobs:
           args=()
           [ -n "${PACKAGES:-}" ] && args+=(--package "$PACKAGES")
           [ "${FORCE:-false}" = "true" ] && args+=(--force)
-          python scripts/autobuilder.py stale $STORES --github-output "$GITHUB_OUTPUT" --format json "${args[@]}" | tee stale.json
+          read -ra stores <<< "$STORES"
+          python scripts/autobuilder.py stale "${stores[@]}" --github-output "$GITHUB_OUTPUT" --format json "${args[@]}" | tee stale.json
           {
             echo "### Build plan ${{ inputs.reason && format('- {0}', inputs.reason) || '' }}"
             echo
@@ -93,7 +94,7 @@ jobs:
             echo "| status | package | variant | version | recipe |"
             echo "|---|---|---|---|---|"
             jq -r '.[] | "| \(.status) | \(.package) | \(.variant) | \(.version) | `\(.recipe12)` |"' stale.json
-            [ "$(jq length stale.json)" = "0" ] && echo "| - | everything already in the store | | | |"
+            if [ "$(jq length stale.json)" = "0" ]; then echo "| - | everything already in the store | | | |"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   libs:
@@ -125,7 +126,8 @@ jobs:
           PACKAGES: ${{ inputs.packages }}
         run: |
           force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
-          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+          read -ra stores <<< "$STORES"
+          /opt/venv/bin/python scripts/autobuilder.py chain "${stores[@]}" --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
             --kind library $force --artifacts-dir dist
       - name: Verify the installed files
         run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --tag library
@@ -167,7 +169,8 @@ jobs:
           PACKAGES: ${{ inputs.packages }}
         run: |
           force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
-          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+          read -ra stores <<< "$STORES"
+          /opt/venv/bin/python scripts/autobuilder.py chain "${stores[@]}" --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
             --kind application $force --artifacts-dir dist
       - name: Verify the installed files (application and its dependencies)
         run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --with-deps

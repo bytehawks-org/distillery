@@ -3,6 +3,14 @@
 All notable changes to Distillery. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 
+## [0.4.1] - 2026-10-23
+
+### Fixed (found by the first runs on GitHub)
+- `build.yml` `plan` failed whenever something was stale: the last command of the summary block was
+  `[ ... ] && echo`, which returns 1 under `bash -e` and failed the step after the plan had been computed. It is an `if` now.
+- Workflow scripts: `$STORES` expanded unquoted (shellcheck SC2086, reported by actionlint in the `workflows` job):
+  now split into an array; `awk -v p=$p` quoted in `ci.yml`.
+
 ## [0.4.0] - 2026-10-23
 
 ### Added
