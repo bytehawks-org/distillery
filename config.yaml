@@ -1,7 +1,24 @@
-config: 
-  default_download_path: /tmp
-  default_src_path: /opt/bytehawks/deps/src
+config:
+  # Real path used for builds and RPATH. /opt/bh is only a convenience symlink and is never
+  # baked into artifacts. Every path below is rebased by --root.
+  root: /opt/bytehawks
+  link: /opt/bh
+  core_path: /opt/bytehawks/core
+  default_download_path: /opt/bytehawks/var/cache/distillery
+  default_src_path: /opt/bytehawks/var/build
+  log_path: /opt/bytehawks/var/log/distillery
   libraries:
     default_prefix: /opt/bytehawks/deps
   applications:
     default_prefix: /opt/bytehawks/{{ name }}
+  # Where built units are kept (see docs/ARTIFACTS.md). `--store` accepts these names, dir:PATH, github[:owner/repo].
+  artifacts:
+    default_stores: [github]
+    stores:
+      github:
+        type: github                  # GitHub Actions artifacts of this repository (GITHUB_REPOSITORY, GITHUB_TOKEN)
+      nexus:
+        type: nexus                   # Sonatype Nexus 3 raw (hosted) repository
+        url: https://nexus.example.com        # or NEXUS_URL; credentials: NEXUS_USER / NEXUS_PASSWORD
+        repository: bytehawks
+        prefix: bytehawks

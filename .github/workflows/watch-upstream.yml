@@ -1,0 +1,124 @@
+name: watch-upstream
+
+# Looks for new upstream releases of every package that declares `upstream:` and follows the series each
+# variant tracks (patch updates). For each package with news it bumps packages.yaml (new version + sha256,
+# cross-checked with the upstream checksum when one is published), opens ONE pull request per package and
+# starts the build chain for that exact change: the build workflow compares recipe hashes with the artifact
+# stores, so only the bumped package and everything that depends on it is rebuilt.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"            # daily, off the hour to avoid the scheduler rush
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Only this package (empty = all)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Report only: no pull request, no build"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write                    # push bot/upstream-* branches
+  pull-requests: write               # open / update the pull request
+  actions: write                     # dispatch ci and build on the bot branch
+
+concurrency:
+  group: watch-upstream
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.find.outputs.packages }}
+      any: ${{ steps.find.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - id: find
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          args=()
+          [ -n "${PACKAGE:-}" ] && args+=(--package "$PACKAGE")
+          python scripts/autobuilder.py outdated --format json "${args[@]}" | tee outdated.json
+          packages="$(jq -c '[.[] | select(.outdated) | .package] | unique' outdated.json)"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "any=$([ "$packages" != '[]' ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Upstream status"
+            echo
+            echo "| package | variant | pinned | follows | latest | |"
+            echo "|---|---|---|---|---|---|"
+            jq -r '.[] | "| \(.package) | \(.variant) | \(.current) | \(.track) | \(.latest // "-") | \(if .outdated then "**update**" else "ok" end)\(if (.newer_series|length)>0 then " (newer series: " + (.newer_series|join(", ")) + ")" else "" end) |"' outdated.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  bump:
+    needs: detect
+    if: needs.detect.outputs.any == 'true' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect.outputs.packages) }}
+    env:
+      # A pull request opened with the default token does not trigger other workflows (GitHub rule), so
+      # ci and build are dispatched explicitly below. Set the BH_BOT_TOKEN secret (fine-grained PAT or
+      # GitHub App token) if you prefer the normal pull_request triggers.
+      PR_TOKEN: ${{ secrets.BH_BOT_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+
+      - name: Bump ${{ matrix.package }}
+        run: python scripts/autobuilder.py bump --package "${{ matrix.package }}" --summary-file bumps.json
+
+      - name: Pull request body
+        id: body
+        run: |
+          {
+            echo "Automated upstream update of **${{ matrix.package }}**."
+            echo
+            echo "| variant | from | to | sha256 | source |"
+            echo "|---|---|---|---|---|"
+            jq -r '.[] | "| \(.variant) | \(.from) | \(.to) | `\(.sha256)` | \(.source) |"' bumps.json
+            echo
+            echo "The checksum was computed from the downloaded source and, where upstream publishes one, confirmed against it."
+            echo "**Review the upstream release notes and verify the signature before merging.**"
+            echo
+            echo "The build chain (this package and everything depending on it) is started on this branch; artifacts"
+            echo "are content-addressed, so merging will not rebuild them."
+          } > pr-body.md
+          jq -r '[.[] | "\(.variant) \(.to)"] | join(", ")' bumps.json > title-suffix.txt
+          echo "suffix=$(cat title-suffix.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the pull request
+        id: cpr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ env.PR_TOKEN }}
+          branch: bot/upstream-${{ matrix.package }}
+          delete-branch: true
+          add-paths: packages.yaml
+          commit-message: "${{ matrix.package }}: update to ${{ steps.body.outputs.suffix }}"
+          title: "${{ matrix.package }}: update to ${{ steps.body.outputs.suffix }}"
+          body-path: pr-body.md
+          labels: dependencies, upstream-update
+
+      - name: Start ci and the build chain on the bot branch
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run ci.yml    --ref "bot/upstream-${{ matrix.package }}"
+          gh workflow run build.yml --ref "bot/upstream-${{ matrix.package }}" -f reason="upstream update of ${{ matrix.package }}"
