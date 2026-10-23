@@ -1,43 +1,53 @@
+# Package catalog.
+#
+# Templates: {{ name }}, {{ full_version }}, {{ prefix }}, {{ deps_prefix }}, {{ jobs }},
+#            {{ src_dir }}, {{ git.repo }}, {{ config.* }} ...  (resolved by Distillery, strict)
+# Runtime text: ${BH_PKG_VAR} is left untouched and expanded by Shaker at runtime.
+# Every variant MUST pin the sha256 of its source tarball.
+#
+# See docs/PACKAGES.md for the complete reference.
+
 package:
+
   openssl:
     variant:
       - name: [ old-legacy, legacy ]
         major_version: 3.0
         patch_version: 18
         full_version: 3.0.18
+        sha256: d80c34f5cf902dccf1f1b5df5ebb86d0392e37049e5d73df1b3abae72e4ffe8b
       - name: stable
         major_version: 3.5
         patch_version: 4
         full_version: 3.5.4
+        sha256: 967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99
       - name: stream
         major_version: 3.6
         patch_version: 0
         full_version: 3.6.0
+        sha256: b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9
     website: https://www.{{ name }}.org/
     git:
       repo: https://github.com/{{ name }}/{{ name }}
       release_url_name_template: "{{ name }}-{{ full_version }}.tar.gz"
       release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
     commands:
-      pre: |
-        wget -O {{ config.default_download_path }}/{{ name }}-{{ full_version }}.tar.gz {{ git.release_download_url_template }}
-        tar -xzf {{ config.default_download_path }}/{{ name }}-{{ full_version }}.tar.gz -C {{ config.default_src_path }}
-        cd {{ config.default_src_path }}/{{ name }}-{{ full_version }}
       configure: |
         ./Configure linux-x86_64 \
-          --prefix={{ default_prefix }} \
-          --openssldir={{ default_prefix }}/etc/ssl \
+          --prefix={{ prefix }} \
+          --libdir=lib \
+          --openssldir={{ prefix }}/etc/ssl \
           -static \
           no-shared \
           no-tests \
           no-docs
-      make: make
-      install: make install_sw
+      make: make -j{{ jobs }}
+      install: make install_sw install_ssldirs
     runtime:
       env:
         - name: BH_OPENSSL_CONF
           type: path
-          default: "{{ default_prefix }}/etc/ssl/openssl.cnf"
+          default: "{{ prefix }}/etc/ssl/openssl.cnf"
           aliases: [OPENSSL_CONF]
           file_key: openssl.conf
           cli: --conf
@@ -45,7 +55,7 @@ package:
           description: OpenSSL configuration file
         - name: BH_OPENSSL_CERT_DIR
           type: path
-          default: "{{ default_prefix }}/etc/ssl/certs"
+          default: "{{ prefix }}/etc/ssl/certs"
           aliases: [SSL_CERT_DIR]
           file_key: openssl.cert_dir
           native_env: SSL_CERT_DIR
@@ -54,38 +64,140 @@ package:
       - library
       - application
 
-#  zlib:
-#    variant:
-#      - name: all
-#        major_version: 1.3
-#        patch_version: 1
-#        full_version: 1.3.1
-#    website: https://zlib.net/
-#    git_repo: https://github.com/madler/zlib
-#    tags:
-#      - library
-#    
-#  pcre2:
-#    variant:
-#      - name: all
-#        major_version: 10
-#        patch_version: 43
-#        full_version: 10.43
-#        website: https://www.pcre.org/
-#    git_repo: https://github.com/PCRE2Project/pcre2
-#    tags:
-#      - library
-#
-#binaries:
-#  nginx:
-#    version: 1.26.2
-#    depends_on: [musl, openssl, zlib, pcre]
-#    configure_flags: "--with-cc=musl-gcc --with-ld-opt=-static"
-#    
-#  postgresql:
-#    version: 16.1
-#    depends_on: [musl, openssl, zlib]
-#    
-#  valkey:
-#    version: 8.0
-#    depends_on: [musl]  # standalone, no deps
+  zlib:
+    variant:
+      - name: all
+        major_version: 1.3
+        patch_version: 1
+        full_version: 1.3.1
+        sha256: 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+    website: https://zlib.net/
+    git:
+      repo: https://github.com/madler/zlib
+      release_download_url_template: "{{ git.repo }}/releases/download/v{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+    commands:
+      configure: ./configure --prefix={{ prefix }} --static
+      make: make -j{{ jobs }}
+      install: make install
+    tags:
+      - library
+
+  pcre2:
+    variant:
+      - name: all
+        major_version: 10
+        patch_version: 43
+        full_version: 10.43
+        sha256: 889d16be5abb8d05400b33c25e151638b8d4bac0e2d9c76e9d6923118ae8a34e
+    website: https://www.pcre.org/
+    git:
+      repo: https://github.com/PCRE2Project/pcre2
+      release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+    commands:
+      configure: ./configure --prefix={{ prefix }} --disable-shared --enable-static --enable-jit
+      make: make -j{{ jobs }}
+      install: make install
+    tags:
+      - library
+
+  nginx:
+    variant:
+      - name: stable
+        major_version: 1.28
+        patch_version: 0
+        full_version: 1.28.0
+        sha256: c6b5c6b086c0df9d3ca3ff5e084c1d0ef909e6038279c71c1c3e985f576ff76a
+    website: https://nginx.org/
+    depends_on:
+      - {name: openssl, variant: stable}
+      - zlib
+      - pcre2
+    git:
+      repo: https://github.com/nginx/nginx
+      release_download_url_template: "{{ git.repo }}/releases/download/release-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+    commands:
+      configure: |
+        ./configure \
+          --prefix={{ prefix }} \
+          --conf-path={{ prefix }}/conf/nginx.conf \
+          --error-log-path=stderr \
+          --http-log-path=/dev/stdout \
+          --pid-path={{ prefix }}/run/nginx.pid \
+          --http-client-body-temp-path={{ prefix }}/run/client_body \
+          --http-proxy-temp-path={{ prefix }}/run/proxy \
+          --http-fastcgi-temp-path={{ prefix }}/run/fastcgi \
+          --http-uwsgi-temp-path={{ prefix }}/run/uwsgi \
+          --http-scgi-temp-path={{ prefix }}/run/scgi \
+          --with-http_ssl_module \
+          --with-http_v2_module \
+          --with-http_stub_status_module \
+          --with-cc-opt="-I{{ deps_prefix }}/include" \
+          --with-ld-opt="-L{{ deps_prefix }}/lib"
+      make: make -j{{ jobs }}
+      install: make install
+    runtime:
+      user:
+        name: nginx
+        uid: 1001
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/run",  mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/html", mode: "g+rX",  owner: "1001:0"}
+      templates:
+        - {src: nginx.conf.tmpl, dest: "{{ prefix }}/conf/nginx.conf", mode: "0640"}
+      hooks:
+        pre_init: "{{ prefix }}/hooks/pre-init.d"
+        first_init: "{{ prefix }}/hooks/init.d"
+        post_init: "{{ prefix }}/hooks/post-init.d"
+      run:
+        command:
+          - "{{ prefix }}/sbin/nginx"
+          - -c
+          - "{{ prefix }}/conf/nginx.conf"
+          - -g
+          - "daemon off;"
+        stop_signal: QUIT
+        pidfile: "{{ prefix }}/run/nginx.pid"
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_NGINX_PORT}"}
+      requires: [openssl]
+      env:
+        - name: BH_NGINX_PORT
+          type: port
+          default: 8080
+          aliases: [NGINX_HTTP_PORT_NUMBER]     # Bitnami dialect
+          file_key: server.port
+          cli: --port
+          description: HTTP listen port
+        - name: BH_NGINX_WORKER_PROCESSES
+          type: string
+          default: auto
+          file_key: server.worker_processes
+          cli: --worker-processes
+          description: Number of worker processes (number or auto)
+        - name: BH_NGINX_SERVER_NAME
+          type: string
+          default: _
+          file_key: server.name
+          cli: --server-name
+          description: Value of the server_name directive
+        - name: BH_NGINX_ACCESS_LOG
+          type: string
+          default: /dev/stdout
+          file_key: logging.access_log
+          cli: --access-log
+          description: access_log target (path, "off"); /dev/stdout may be refused to arbitrary uids on some runtimes
+        - name: BH_NGINX_SERVER_TOKENS
+          type: enum:on,off
+          default: "off"
+          file_key: server.tokens
+          cli: --server-tokens
+          description: Expose the nginx version in headers and error pages
+    tags:
+      - application
+
+# Roadmap candidates (not yet declared):
+#   postgresql  depends_on: openssl, zlib
+#   valkey      depends_on: openssl (TLS)

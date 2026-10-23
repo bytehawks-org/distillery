@@ -1,0 +1,21 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -r scripts/requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - name: catalog is consistent (every source pinned, plans resolve)
+        run: |
+          python scripts/autobuilder.py list
+          for p in $(python scripts/autobuilder.py list | awk '{print $1}'); do
+            python scripts/autobuilder.py plan --package "$p" --tag "$(python scripts/autobuilder.py list | awk -v p=$p '$1==p{split($2,t,","); print t[1]}')" --root /tmp/stage | grep -v MISSING
+          done

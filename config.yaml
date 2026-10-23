@@ -1,10 +1,12 @@
 config:
-  # Real path used for builds and RPATH; /opt/bh is only a convenience symlink, never baked into artifacts.
+  # Real path used for builds and RPATH. /opt/bh is only a convenience symlink and is never
+  # baked into artifacts. Every path below is rebased by --root.
   root: /opt/bytehawks
   link: /opt/bh
   core_path: /opt/bytehawks/core
-  default_download_path: /tmp
-  default_src_path: /opt/bytehawks/deps/src
+  default_download_path: /opt/bytehawks/var/cache/distillery
+  default_src_path: /opt/bytehawks/var/build
+  log_path: /opt/bytehawks/var/log/distillery
   libraries:
     default_prefix: /opt/bytehawks/deps
   applications:
