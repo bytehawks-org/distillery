@@ -28,6 +28,19 @@ config:
 | `libraries.default_prefix` | prefix of `tag: library` units; also `deps_prefix` for dependents |
 | `applications.default_prefix` | prefix template of `tag: application` units (`{{ name }}` allowed) |
 
+## `artifacts`
+
+```yaml
+config:
+  artifacts:
+    default_stores: [github]          # used by stale/inventory/chain/restore/publish when --store is absent
+    stores:
+      github: {type: github}          # repo from GITHUB_REPOSITORY (or `repo: owner/name`), token GITHUB_TOKEN/GH_TOKEN
+      nexus:  {type: nexus, url: https://nexus.example.com, repository: bytehawks, prefix: bytehawks}
+```
+Credentials are never in the file: `GITHUB_TOKEN`/`GH_TOKEN`, `NEXUS_USER`, `NEXUS_PASSWORD`, optional `NEXUS_URL`.
+Details: [ARTIFACTS](ARTIFACTS.md).
+
 ## `--root`
 
 `autobuilder.py --root /tmp/stage ...` rewrites every value that equals `root` or starts with `root/`:

@@ -4,7 +4,7 @@ Status legend: ✅ done · 🚧 partial · ⬜ planned. Shared with
 [Shaker's roadmap](https://github.com/bytehawks-org/shaker/blob/main/ROADMAP.md); **(contract)** = needs a
 matching change in the bundle schema / Shaker.
 
-## Where we are (v0.3.0)
+## Where we are (v0.4.0)
 
 | Phase | Scope | State |
 |---|---|---|
@@ -15,6 +15,10 @@ matching change in the bundle schema / Shaker.
 | 3 | **Recipe hash** (Merkle) and idempotent builds | ✅ |
 | 3 | **Bundle contract v1**: `runtime.spec`, `manifest.json/env`, assets | ✅ |
 | 5 | Real chain built end to end: openssl → zlib → pcre2 → nginx 1.28 | ✅ |
+| 6 | **Upstream watcher** (`outdated`, `bump`, daily workflow, PR per package) | ✅ code + tests; ⬜ first run on GitHub |
+| 6 | **Artifact stores** (dir, GitHub Actions artifacts, Nexus raw), `restore`, `publish`, `inventory` | ✅ dir/github (API listing verified); 🚧 Nexus tested on a fake server only |
+| 6 | **Affected-only build chain** (`stale`, `chain`, build workflow libs → apps) | ✅ code + tests; ⬜ first run on GitHub |
+| 6 | Installed-file inventory (`files.sha256`, `verify`) | ✅ (Shaker integration ⬜) |
 
 ## 0.4 - supply chain & provenance
 
@@ -22,11 +26,26 @@ matching change in the bundle schema / Shaker.
 |---|---|
 | ⬜ SBOM | emit CycloneDX (and SPDX) per unit: components = source + dependencies with hashes; ship as `sbom.cdx.json` in the bundle (**contract**: Shaker `verify` can report it) |
 | ⬜ Source signature verification | per variant `signature:` (URL + key/fingerprint) checked with `gpg`/`minisign`/`cosign` before extraction |
-| ⬜ Installed-file inventory | after `install`, `files.sha256` (path, mode, hash) of the prefix; Shaker `verify --files` detects tampering |
+| 🚧 Installed-file inventory | `files.sha256` + `autobuilder.py verify` done; add mode/owner and Shaker `verify --files` |
 | ⬜ Vulnerability gate | optional `grype`/`trivy` run on SBOM in CI; fail on severity threshold |
 | ⬜ Reproducible-build check | `build --repro`: build twice in clean dirs with `SOURCE_DATE_EPOCH`, compare file hashes |
-| ⬜ Update watcher | `autobuilder.py outdated`: query upstream releases, propose `full_version` + `sha256` bumps (PR-ready diff) |
+| ✅ Update watcher | `outdated` + `bump` + `watch-upstream.yml` |
 | ⬜ Variant lifecycle | `eol:` dates per variant, warning in `plan`/`list` |
+
+## 0.4.x - closing the automation loop
+
+| Item | Detail |
+|---|---|
+| ⬜ **First real run** | execute `watch-upstream` and `build` on GitHub, fix what only the platform reveals (same-run artifact visibility, container + checkout details, PR token behaviour) |
+| ⬜ Nexus on a real instance | run `publish`/`inventory`/`restore` against Nexus 3 OSS, adjust listing/pagination quirks |
+| ⬜ `prune` | remove superseded artifacts older than N days / keep last K per unit in a store; scheduled |
+| ⬜ Failure notification | open/update an issue when a scheduled build or a bump fails; weekly digest of outdated series (`newer_series`) |
+| ⬜ Auto-merge policy | opt-in auto-merge of patch bumps when ci + build are green **and** a signature check passed |
+| ⬜ Artifact signing | cosign/minisign signature of tarball + sidecar, verified by `restore` (authenticity, not only integrity) |
+| ⬜ More store backends | GitHub Releases (long retention), S3/MinIO, OCI registry (ORAS), Artifactory |
+| ⬜ Non-git upstreams | `upstream.type: html` (regex on an index page, e.g. nginx.org/download), `pypi`, `url-json` |
+| ⬜ Matrix per architecture | `arm64` runners in the same workflows; per-arch checksum when sources differ |
+| ⬜ Release pins | `release.yaml`: a frozen set of recipe hashes = a reproducible, signed distribution (what Shaker deployments target) |
 
 ## 0.5 - build engine
 
@@ -35,7 +54,7 @@ matching change in the bundle schema / Shaker.
 | ⬜ Multi-arch | `arch` matrix (amd64, arm64): per-arch configure targets (replace hard-coded `linux-x86_64`), per-arch checksums only when sources differ |
 | ⬜ Sandboxed builds | run stages in `bwrap`/`unshare`/container: network-less after fetch, read-only source |
 | ⬜ Parallel independent units | schedule the DAG with `--max-units`, per-unit logs |
-| ⬜ Remote artifact cache | content-addressed by recipe hash: `pull` before build, `push` after (S3/OCI/file) - turns CI into incremental builds |
+| ✅ Remote artifact cache | content-addressed by recipe hash (`--store`, `chain`) with dir/GitHub/Nexus backends; more backends below |
 | ⬜ Patches | `patches:` list (checksummed) applied in `pre` with `patch -p1`, part of the recipe hash |
 | ⬜ git sources | `source: {git, rev}` with commit pinning; submodules |
 | ⬜ Non-tarball sources | zip, zst, xz explicit; local directories for development |
@@ -74,8 +93,10 @@ matching change in the bundle schema / Shaker.
 
 * Only `linux-x86_64` is encoded for openssl; no cross-compilation.
 * Build commands are unsandboxed trusted shell.
-* No signature/SBOM; `checksum` trusts the download it just made.
+* No signature/SBOM; `checksum`/`bump` trust the download they just made (cross-checked with upstream's checksum when published).
+* The workflows pass `actionlint` and their commands are tested, but have not run on GitHub yet; Nexus has only been tested against a fake server.
+* GitHub artifacts expire (≤ 90 days): GitHub is a cache, Nexus (or another store) is needed for an archive.
 * openssl 3.0.18 and 3.6.0 variants have never been built here.
 * `file://` and `https://` only; no mirrors/fallback URLs, no retries, no resume.
-* Units build sequentially; no remote cache.
+* Units build sequentially within a job (the workflow parallelizes applications across jobs).
 * Hook scripts shipped in `assets/` must be copied by a `post` stage (no `hooks:` file copier yet).

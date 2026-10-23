@@ -4,6 +4,8 @@
 #            {{ src_dir }}, {{ git.repo }}, {{ config.* }} ...  (resolved by Distillery, strict)
 # Runtime text: ${BH_PKG_VAR} is left untouched and expanded by Shaker at runtime.
 # Every variant MUST pin the sha256 of its source tarball.
+# `upstream:` lets `autobuilder.py outdated|bump` follow new releases; a variant follows the series
+# named by its major_version (override with `track:`). Quote versions that end in 0 ("1.30").
 #
 # See docs/PACKAGES.md for the complete reference.
 
@@ -11,7 +13,7 @@ package:
 
   openssl:
     variant:
-      - name: [ old-legacy, legacy ]
+      - name: [old-legacy, legacy]
         major_version: 3.0
         patch_version: 18
         full_version: 3.0.18
@@ -43,6 +45,9 @@ package:
           no-docs
       make: make -j{{ jobs }}
       install: make install_sw install_ssldirs
+    upstream:
+      tag_regex: '^openssl-(\d+\.\d+\.\d+)$'
+      checksum_url_template: "{{ git.release_download_url_template }}.sha256"
     runtime:
       env:
         - name: BH_OPENSSL_CONF
@@ -75,6 +80,8 @@ package:
     git:
       repo: https://github.com/madler/zlib
       release_download_url_template: "{{ git.repo }}/releases/download/v{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+    upstream:
+      tag_regex: '^v(\d+\.\d+\.\d+)$'
     commands:
       configure: ./configure --prefix={{ prefix }} --static
       make: make -j{{ jobs }}
@@ -93,6 +100,8 @@ package:
     git:
       repo: https://github.com/PCRE2Project/pcre2
       release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+    upstream:
+      tag_regex: '^pcre2-(\d+\.\d+)$'
     commands:
       configure: ./configure --prefix={{ prefix }} --disable-shared --enable-static --enable-jit
       make: make -j{{ jobs }}
@@ -115,6 +124,8 @@ package:
     git:
       repo: https://github.com/nginx/nginx
       release_download_url_template: "{{ git.repo }}/releases/download/release-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
+    upstream:
+      tag_regex: '^release-(\d+\.\d+\.\d+)$'
     commands:
       configure: |
         ./configure \
@@ -142,9 +153,9 @@ package:
         gid: 0
         home: "{{ prefix }}"
       dirs:
-        - {path: "{{ prefix }}/run",  mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1001:0"}
         - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/html", mode: "g+rX",  owner: "1001:0"}
+        - {path: "{{ prefix }}/html", mode: "g+rX", owner: "1001:0"}
       templates:
         - {src: nginx.conf.tmpl, dest: "{{ prefix }}/conf/nginx.conf", mode: "0640"}
       hooks:

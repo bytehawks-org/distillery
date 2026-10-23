@@ -83,6 +83,16 @@ recipe_sha256(unit) = SHA256( json(sort_keys){
 
 `built_at` is deliberately not part of the hash. `SOURCE_DATE_EPOCH` fixes it for reproducible manifests.
 
+### Artifacts, stores, automation (0.4)
+The recipe hash is also the **cache key**: `bh--<pkg>--<variant>--<tag>--<arch>--<version>--<recipe12>`
+names an artifact in a store, so "what is stale?" is a set difference between the catalog and a store listing
+([ARTIFACTS](ARTIFACTS.md)). `build` can restore instead of compile (`ensure_unit`: up to date → skip, in a
+store → restore, else build); `chain` applies that to every stale unit in dependency order. GitHub Actions
+drive it on a schedule and on upstream news ([AUTOMATION](AUTOMATION.md)). Upstream discovery
+(`upstream.py`) and the YAML-preserving edit (`bump.py`) feed it; `store.py` and `package.py` hold the backends
+and the artifact format. The architecture of a unit does not change: stores only decide whether step 4-7
+run or are replaced by a restore.
+
 ## 5. Design decisions
 
 | Decision | Rationale |

@@ -12,8 +12,12 @@ audits it on containers and on legacy VM/servers, without any application-specif
 ```
 packages.yaml ──► plan (deps first) ──► fetch + verify sha256 ──► extract ──► configure/make/install
                                                                         │
-                                              <prefix>/.bytehawks/ ◄────┘  manifest.json  manifest.env
+                                              <prefix>/.bytehawks/ ◄────┘  manifest.json  manifest.env  files.sha256
                                                                            rosetta.map   runtime.spec  assets/
+                                                   │
+                          artifact (tar.gz + json) ▼   github artifacts · nexus · dir        ◄── GitHub Actions
+                                                                                                   watch-upstream (daily)
+upstream tags ──► outdated ──► bump ──► PR ──► build: stale = catalog − store ──► chain          build (push / nightly)
 ```
 
 ## Highlights
@@ -26,7 +30,10 @@ packages.yaml ──► plan (deps first) ──► fetch + verify sha256 ──
 | **Declarative runtime contract** | `runtime:` section → `rosetta.map` (parameters, aliases, CLI, config-file keys) and `runtime.spec` (user, dirs, templates, hooks, run, health) |
 | **Relocatable builds** | `--root DIR` rebases `/opt/bytehawks` for unprivileged builds, staging and tests |
 | **Strict templates** | `{{ var }}` that cannot be resolved fails the build instead of reaching a shell |
-| **Tested** | 34 unit/integration tests; a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
+| **Follows upstream** | scheduled GitHub workflow detects new releases (`git ls-remote`, per-variant series), bumps the catalog (new SHA-256, cross-checked with the one upstream publishes) and opens one PR per package |
+| **Rebuilds only what is affected** | catalog units are compared with the artifact stores by recipe hash: a new `zlib` makes `zlib` and `nginx` stale, not `openssl`; libraries build serially in dependency order, applications in parallel |
+| **Artifact stores** | content-addressed, deterministic tarballs; GitHub Actions artifacts today, **Nexus raw repository** implemented, any backend behind one small interface; restore instead of compile; `verify` installed files |
+| **Tested** | 63 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
 
 ## Layout
 
@@ -43,7 +50,7 @@ packages.yaml ──► plan (deps first) ──► fetch + verify sha256 ──
 ## Quick start
 
 ```sh
-pip install -r scripts/requirements.txt          # PyYAML only
+pip install -r scripts/requirements.txt          # PyYAML, ruamel.yaml
 
 python3 scripts/autobuilder.py list                                   # catalog
 python3 scripts/autobuilder.py plan  --package nginx                  # dependency order, pinned?, up to date?
@@ -85,6 +92,9 @@ An application adds `depends_on` and a `runtime:` section (see `nginx` in `packa
 | `build` | fetch → verify → extract → stages → bundle; `--with-deps --dry-run --force --root --jobs --stages --allow-unverified` |
 | `bundle` | write only the Shaker bundle (no build) |
 | `checksum` | download a source and print its SHA-256 for pinning |
+| `outdated` / `bump` | compare with upstream releases / update `packages.yaml` (version + verified SHA-256) |
+| `stale` / `chain` / `affected` | what the stores lack / build it in dependency order / who depends on a package |
+| `inventory` / `restore` / `publish` / `verify` | list a store / install from it / push to it / check installed files |
 
 Reference: [docs/CLI.md](docs/CLI.md).
 
@@ -95,6 +105,8 @@ Reference: [docs/CLI.md](docs/CLI.md).
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | modules, build pipeline, recipe hash, design decisions |
 | [PACKAGES](docs/PACKAGES.md) | complete `packages.yaml` reference (variants, git, commands, depends_on, runtime) |
 | [CONFIG](docs/CONFIG.md) | `config.yaml`, paths, `--root` |
+| [AUTOMATION](docs/AUTOMATION.md) | the scheduled workflows: watch upstream, rebuild what is affected, setup, operation |
+| [ARTIFACTS](docs/ARTIFACTS.md) | artifact format and identity, stores (dir, GitHub, Nexus), restore, integrity |
 | [CLI](docs/CLI.md) | every command and option, exit codes |
 | [BUNDLE](docs/BUNDLE.md) | the Distillery → Shaker contract: file formats, `rosetta.map`, `runtime.spec`, `manifest.*` |
 | [ADDING-A-PACKAGE](docs/ADDING-A-PACKAGE.md) | tutorial: from tarball to a package Shaker can run |
@@ -104,7 +116,7 @@ Reference: [docs/CLI.md](docs/CLI.md).
 
 ## Requirements
 
-Python ≥ 3.9, PyYAML, `bash`, and the toolchain each package needs (`gcc make perl` for openssl, ...).
+Python ≥ 3.9, PyYAML, ruamel.yaml (only `bump`), `git` (only `outdated`/`bump`), `bash`, and the toolchain each package needs (`gcc make perl` for openssl, ...).
 Network access to the source URLs (HTTPS, `file://` also supported). Linux.
 
 ## License

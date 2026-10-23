@@ -3,6 +3,36 @@
 All notable changes to Distillery. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 
+## [0.4.0] - 2026-10-23
+
+### Added
+- **Upstream watcher.** `outdated` compares every variant with its upstream (`upstream:` block,
+  `git ls-remote --tags`, `tag_regex`, followed series = `track` or `major_version`); `bump` downloads the new
+  source, computes the SHA-256, cross-checks it with the checksum upstream publishes (`checksum_url_template`)
+  and rewrites only the variant lines of `packages.yaml` (ruamel.yaml, comments and layout preserved).
+  `upstream:` declared for openssl, zlib, pcre2, nginx.
+- **Artifacts and stores.** Deterministic `tar.gz` + JSON sidecar per unit, content-addressed name
+  `bh--<package>--<variant>--<tag>--<arch>--<version>--<recipe12>`; backends `dir:PATH`, `github`
+  (Actions artifacts: REST listing/download, token never forwarded to the blob host) and `nexus`
+  (Nexus 3 raw repository: PUT/GET + REST listing); `MultiStore` (first match wins); integrity check on every fetch.
+- **Commands** `stale`, `chain`, `affected`, `inventory`, `restore`, `publish`, `verify`, `outdated`, `bump`;
+  `build --store --artifacts-dir` (restore instead of compile, package what is built).
+- **Affected-only chain.** Staleness = catalog unit whose exact recipe hash is not in the stores (the Merkle
+  hash makes dependents stale automatically); `stale --github-output` emits libs/apps matrices in dependency order.
+- **`files.sha256`** in every bundle (hash of everything a build installed) and `verify` against the disk.
+- **GitHub Actions**: `watch-upstream.yml` (daily; one PR per package with news, then dispatches ci and build on
+  the bot branch), `build.yml` (plan → libs serial → apps parallel → optional Nexus publish; triggers:
+  dispatch, push to main, nightly reconcile), `ci.yml` extended (actionlint, `-W error::ResourceWarning`).
+- Architecture is part of the recipe hash and of artifact names (`--arch`, default detected).
+- Docs: `AUTOMATION.md`, `ARTIFACTS.md`; CLI/PACKAGES/CONFIG/BUNDLE/ARCHITECTURE/SECURITY/TESTING updated.
+- 29 new tests (63 total): fake GitHub and Nexus servers, real git remotes, artifact round-trips.
+
+### Changed
+- `autobuilder.py` is now argument parsing only; commands live in `bhdistillery/commands.py`.
+- Variant names in units/artifacts/manifests are canonical (first alias): `old-legacy`, not `legacy`.
+- `publishable_units` and `stale` order units dependencies first.
+- `requirements.txt` adds `ruamel.yaml`; `git` is needed by `outdated`/`bump` and the tests.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added

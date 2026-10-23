@@ -8,6 +8,7 @@ Distillery after a successful build (or by `bundle`):
 <deps>/.bytehawks/<lib>/        libraries         e.g. /opt/bytehawks/deps/.bytehawks/openssl/
 ├── manifest.json               identity, provenance
 ├── manifest.env                BH_PKG_* for Shaker (flat)
+├── files.sha256                every file/directory the build installed, with SHA-256 (tamper check)
 ├── rosetta.map                 parameters
 ├── runtime.spec                runtime behaviour
 └── assets/                     templates and hooks copied from distillery/assets/<package>/
@@ -46,6 +47,15 @@ BH_PKG_PREFIX=/opt/bytehawks/nginx
 BH_PKG_RECIPE=a1146e116deab35c59f801307975b40ab20b9f6da9582b0a6c7e11b12c512fa6
 ```
 Exported by Shaker; available to templates (`{{ BH_PKG_PREFIX }}`), hooks and the service.
+
+## `files.sha256`
+
+```
+<64 hex>  deps/include/zlib.h              file or link (link: hash of the target text)
+----------------------------------------------------------------  deps/share/    directory (new ones only)
+```
+Paths are relative to the root (`/opt/bytehawks`). Written by `build` (not by `bundle`); checked by
+`autobuilder.py verify`; not listed inside itself. Shaker ignores it today; `shaker verify --files` is planned.
 
 ## `rosetta.map`
 

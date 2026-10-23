@@ -59,3 +59,74 @@ class TempDir:
 
     def __exit__(self, *exc):
         self._t.cleanup()
+
+
+import http.server
+import json as _json
+import subprocess
+import threading
+
+
+def git_repo_with_tags(path, tags):
+    """A local git repository with the given tags, usable as `git ls-remote` target."""
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "PATH": __import__("os").environ["PATH"], "HOME": str(path)}
+    run = lambda *a: subprocess.run(["git", *a], cwd=path, env=env, check=True, capture_output=True)
+    run("init", "-q")
+    run("commit", "-q", "--allow-empty", "-m", "x")
+    for tag in tags:
+        run("tag", tag)
+    return str(path)
+
+
+class FakeServer:
+    """Tiny threaded HTTP server: routes = {(method, path-prefix): callable(handler, body) -> (status, headers, bytes)}.
+    Records every request as (method, path, headers)."""
+
+    def __init__(self, routes):
+        self.routes, self.requests = routes, []
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _serve(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                body = self.rfile.read(length) if length else b""
+                outer.requests.append((self.command, self.path, dict(self.headers), body))
+                for (method, prefix), fn in outer.routes.items():
+                    if method == self.command and self.path.startswith(prefix):
+                        status, headers, payload = fn(self, body)
+                        self.send_response(status)
+                        for key, value in headers.items():
+                            self.send_header(key, value)
+                        self.send_header("Content-Length", str(len(payload)))
+                        self.end_headers()
+                        self.wfile.write(payload)
+                        return
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            do_GET = do_PUT = do_HEAD = _serve
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def json_response(data, status=200, headers=None):
+    return status, {"Content-Type": "application/json", **(headers or {})}, _json.dumps(data).encode()

@@ -16,6 +16,17 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
 | Injection through the bundle formats | `|` and newlines are rejected in every emitted field; `run` must be an argv list, not a shell string |
 | Hard-wired `/opt/bh` | never used in artifacts, so symlink games cannot redirect an installed tree |
 
+## Automation (0.4)
+
+| Risk | Control |
+|---|---|
+| A malicious or hijacked upstream tag/tarball enters the catalog through an automatic bump | the bot only **proposes** a pull request; the checksum is cross-checked against the one upstream publishes when available; the PR text asks for release-notes and signature review; protect `main` with required review. Never enable auto-merge for bump PRs without signature verification (roadmap) |
+| Workflow token abuse | least-privilege `permissions:` per workflow (`build`: `contents: read, actions: read`); `build` has no `pull_request_target`, no fork triggers; secrets are only passed to the steps that use them |
+| Token leaked to the artifact blob host | the GitHub store never forwards `Authorization` to the redirect target (test `test_download_never_sends_the_token_to_the_blob_host`) |
+| Poisoned or corrupted store | every fetch re-hashes against the sidecar; `restore` refuses unsafe members and a foreign recipe; `verify` re-checks installed files. This is **integrity only** - writers to the store are trusted. Restrict write access (Nexus role, CI only) |
+| Bot PRs trigger nothing / trigger too much | explicit `workflow_dispatch` on the bot branch (or `BH_BOT_TOKEN`); content-addressed artifacts make a repeated build a no-op |
+| Cache poisoning across branches | the artifact name is the recipe hash: a branch cannot supply an artifact for a recipe it did not define, but any branch with `actions: write` can upload any name - treat the store as writable by the repository's maintainers only |
+
 ## Trust boundaries
 
 * **Build commands are trusted shell** (as in any build system). The catalog is code: review changes

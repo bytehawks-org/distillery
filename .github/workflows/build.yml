@@ -1,0 +1,204 @@
+name: build
+
+# Builds what is missing from the artifact stores, in dependency order.
+#
+#   plan  ->  libs (serial, topological)  ->  apps (parallel)  ->  publish to Nexus (optional)
+#
+# "Missing" is decided by comparing each catalog unit's recipe hash with the stores' inventory. Because
+# the hash is a Merkle hash over the recipe, the variant, the prefix and the dependencies, a change in one
+# library makes exactly that library and its dependents stale. Triggers:
+#   - dispatch (also used by watch-upstream on its bot branch)
+#   - push to main touching the catalog / scripts      (a merged change that was never built)
+#   - nightly schedule                                  (reconcile: expired GitHub artifacts, drift)
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Only these packages (space or comma separated; empty = everything stale)"
+        required: false
+        default: ""
+      force:
+        description: "Rebuild the selected packages even if their artifacts exist"
+        type: boolean
+        default: false
+      reason:
+        description: "Free text shown in the run summary"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - packages.yaml
+      - config.yaml
+      - assets/**
+      - scripts/**
+      - .github/workflows/build.yml
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_call:
+    inputs:
+      packages: {type: string, required: false, default: ""}
+      force: {type: boolean, required: false, default: false}
+
+permissions:
+  contents: read
+  actions: read                      # list and download artifacts
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # github = this repository's Actions artifacts. Add a Nexus by defining the repository variable NEXUS_URL
+  # (and secrets NEXUS_USER / NEXUS_PASSWORD): it becomes a second, long-term store.
+  STORES: ${{ vars.NEXUS_URL && '--store github --store nexus' || '--store github' }}
+  NEXUS_URL: ${{ vars.NEXUS_URL }}
+  GITHUB_TOKEN: ${{ github.token }}
+  RETENTION_DAYS: ${{ vars.BH_ARTIFACT_RETENTION_DAYS || 90 }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      libs: ${{ steps.stale.outputs.libs }}
+      apps: ${{ steps.stale.outputs.apps }}
+      has_libs: ${{ steps.stale.outputs.has_libs }}
+      has_apps: ${{ steps.stale.outputs.has_apps }}
+      count: ${{ steps.stale.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - name: Compare the catalog with the stores
+        id: stale
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          FORCE: ${{ inputs.force }}
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          args=()
+          [ -n "${PACKAGES:-}" ] && args+=(--package "$PACKAGES")
+          [ "${FORCE:-false}" = "true" ] && args+=(--force)
+          python scripts/autobuilder.py stale $STORES --github-output "$GITHUB_OUTPUT" --format json "${args[@]}" | tee stale.json
+          {
+            echo "### Build plan ${{ inputs.reason && format('- {0}', inputs.reason) || '' }}"
+            echo
+            echo "Trigger: \`${{ github.event_name }}\` on \`${{ github.ref_name }}\`"
+            echo
+            echo "| status | package | variant | version | recipe |"
+            echo "|---|---|---|---|---|"
+            jq -r '.[] | "| \(.status) | \(.package) | \(.variant) | \(.version) | `\(.recipe12)` |"' stale.json
+            [ "$(jq length stale.json)" = "0" ] && echo "| - | everything already in the store | | | |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  libs:
+    needs: plan
+    if: needs.plan.outputs.has_libs == 'true'
+    runs-on: ubuntu-latest
+    # one at a time and in plan order (dependencies first): a library may need the one built just before it,
+    # which it restores from the artifact the previous job uploaded
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.plan.outputs.libs) }}
+    container: ${{ vars.BH_BUILDER_IMAGE || 'debian:12' }}      # build on the OLDEST glibc you intend to support
+    steps:
+      - name: Toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq
+      - uses: actions/checkout@v4
+      - name: Python environment
+        run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install -r scripts/requirements.txt
+      - name: Build ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          FORCE: ${{ inputs.force }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
+          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+            --kind library $force --artifacts-dir dist
+      - name: Verify the installed files
+        run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --tag library
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}.*
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: warn
+      - name: Build log
+        if: failure()
+        run: tail -n 200 /opt/bytehawks/var/log/distillery/*.log || true
+
+  apps:
+    needs: [plan, libs]
+    # run when libs succeeded or was skipped, never after a failure/cancel
+    if: ${{ !cancelled() && !failure() && needs.plan.outputs.has_apps == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.apps) }}
+    container: ${{ vars.BH_BUILDER_IMAGE || 'debian:12' }}
+    steps:
+      - name: Toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq
+      - uses: actions/checkout@v4
+      - name: Python environment
+        run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install -r scripts/requirements.txt
+      - name: Build ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          FORCE: ${{ inputs.force }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
+          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+            --kind application $force --artifacts-dir dist
+      - name: Verify the installed files (application and its dependencies)
+        run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --with-deps
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}.*
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: warn
+      - name: Build log
+        if: failure()
+        run: tail -n 200 /opt/bytehawks/var/log/distillery/*.log || true
+
+  publish-nexus:
+    needs: [libs, apps]
+    if: ${{ !cancelled() && !failure() && vars.NEXUS_URL != '' && (needs.libs.result == 'success' || needs.apps.result == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bh--*
+          path: dist
+          merge-multiple: true
+      - name: Publish to Nexus
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: python scripts/autobuilder.py publish --store nexus --from dist

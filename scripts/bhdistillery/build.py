@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import bundle, fetch
+from . import bundle, fetch, package as artifact
 from .templates import resolve_template
 
 STAGES = ("pre", "configure", "make", "check", "install", "post")
@@ -61,8 +61,11 @@ def run_script(script, cwd, env, log_file, echo=print):
 
 
 def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverified=False,
-               stages=DEFAULT_STAGES, log=print):
-    """Build one unit. Returns 'built', 'skipped' or 'dry-run'."""
+               stages=DEFAULT_STAGES, artifacts_dir=None, log=print):
+    """Build one unit. Returns 'built', 'skipped' or 'dry-run'.
+
+    The files the build changes are recorded in the bundle (`files.sha256`); with artifacts_dir the unit
+    is also packaged there as <name>.tar.gz + <name>.json, ready for a store."""
     cfg = unit.context["config"]
     title = f"{unit.name} {unit.variant_data['full_version']} ({unit.variant}, {unit.tag})"
 
@@ -91,10 +94,51 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     fetch.extract(tarball, unit.src_dir, strip_components=unit.package.get("strip_components", 1))
 
     Path(unit.prefix).mkdir(parents=True, exist_ok=True)
+    before = artifact.snapshot(unit.prefix)
     log_file = Path(cfg["log_path"]) / f"{unit.name}-{unit.variant_data['full_version']}.log"
     started = time.time()
     run_script(script, unit.src_dir, build_env(unit, unit.context["deps_prefix"]), log_file, echo=log)
 
     out = bundle.emit(unit, assets_root, built=True)
-    log(f"[done] {title} in {time.time() - started:.0f}s, bundle: {out}")
+    changed = artifact.changed_paths(before, artifact.snapshot(unit.prefix))
+    files_list = out / "files.sha256"
+    artifact.write_file_list(unit, changed, files_list)       # describes everything except itself
+    changed.append(str(files_list.relative_to(unit.prefix)))
+    log(f"[done] {title} in {time.time() - started:.0f}s, bundle: {out}, {len(changed)} paths recorded")
+
+    if artifacts_dir:
+        entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["arch"])
+        log(f"[pack] {tarball} ({meta['size']} bytes, sha256 {meta['sha256'][:12]})")
     return "built"
+
+
+def restore_unit(unit, stores, work_dir, log=print):
+    """Restore a unit from the first store that has its exact recipe. Returns the entry, or None."""
+    from .store import entry_for
+
+    wanted = entry_for(unit, unit.context["arch"])
+    for store in stores.stores:
+        entry = store.find(wanted)
+        if entry is None:
+            continue
+        log(f"[restore] {unit.name} {wanted.version} from {entry.store} ({entry.name})")
+        tarball, meta = store.fetch(entry, work_dir)
+        artifact.restore(tarball, unit.context["config"]["root"], expected_recipe=unit.recipe_sha256, log=log)
+        return entry
+    return None
+
+
+def ensure_unit(unit, assets_root, stores=None, work_dir=None, *, force=False, dry_run=False, **build_options):
+    """The idempotent unit of work: up to date → skip; in a store → restore; else build.
+    Returns 'skipped', 'restored', 'built' or 'dry-run'."""
+    log = build_options.get("log", print)
+
+    if not force and not dry_run and bundle.is_up_to_date(unit):
+        log(f"[skip] {unit.name} {unit.variant_data['full_version']}: bundle up to date ({unit.recipe_sha256[:12]})")
+        return "skipped"
+
+    if not force and not dry_run and stores is not None and stores.stores:
+        if restore_unit(unit, stores, work_dir or Path(unit.context["config"]["default_download_path"]) / "artifacts", log):
+            return "restored"
+
+    return build_unit(unit, assets_root, force=force, dry_run=dry_run, **build_options)

@@ -11,6 +11,8 @@ package:
     env:         { KEY: value }              # extra build environment (templated)
     commands:    { configure, make, check, install, pre, post }
     runtime:     { user, dirs, persistence, templates, hooks, run, healthcheck, requires, env }
+    upstream:    { type, repo, tag_regex, checksum_url_template }     # release tracking
+    publish_tag: library | application                                # role under which artifacts are published
     tags:        [ library | application ]
 ```
 
@@ -44,6 +46,28 @@ variant:
 ```
 Selection: `--variant NAME` (default `stable`, otherwise the first declared). Any extra key is kept
 in the recipe hash. The `sha256` is of the downloaded tarball exactly as served.
+
+## `upstream` and `track` - following new releases
+
+```yaml
+upstream:
+  type: git-tags                                   # default (the only type today)
+  repo: https://github.com/openssl/openssl         # default: git.repo
+  tag_regex: '^openssl-(\d+\.\d+\.\d+)$'         # group 1 = version. Pre-releases must not match
+  checksum_url_template: "{{ git.release_download_url_template }}.sha256"   # optional
+```
+* Tags come from `git ls-remote --tags --refs <repo>` (no API, no token, any git host).
+* A variant **follows a series**: the prefix named by `track` (default: its `major_version`). `stable` with
+  `major_version: 3.5` follows `3.5.x`; `track: "3"` would follow any `3.x`. Newer versions outside the series
+  are only reported by `outdated`.
+* `checksum_url_template` (optional): URL of a file whose first word is the SHA-256 published by upstream
+  (OpenSSL publishes `<tarball>.sha256`). `bump` refuses to write a hash that differs from it.
+* Quote versions that end in 0 in YAML (`"1.30"`), otherwise they load as numbers.
+* Remove the block to stop tracking a package.
+
+## `publish_tag`
+Which role the CI builds and stores for the package: `library` if the package can be one, else its first tag.
+Override for packages with both tags that should be published as applications.
 
 ## `git`
 

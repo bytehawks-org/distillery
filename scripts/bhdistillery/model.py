@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import platform
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -69,6 +70,28 @@ def default_variant(package):
     return "stable" if "stable" in names else names[0]
 
 
+def canonical_variant(package, name):
+    """The first alias of the variant `name` belongs to (stable artifact names)."""
+    for variant in package.get("variant", []):
+        names = variant["name"] if isinstance(variant["name"], list) else [variant["name"]]
+        if name in names:
+            return names[0]
+    return name
+
+
+def detect_arch():
+    """Go/OCI naming, the same Shaker exports as BH_SHAKER_ARCH."""
+    machine = platform.machine().lower()
+    return {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(
+        machine, "armv7" if machine.startswith("armv7") else machine)
+
+
+def publish_tag(package):
+    """Role under which a package is published: library when it can be one, else its first tag."""
+    tags = package.get("tags", [])
+    return package.get("publish_tag") or ("library" if "library" in tags else tags[0])
+
+
 def default_tag(package_name, package):
     tags = package.get("tags", [])
     if len(tags) == 1:
@@ -111,10 +134,11 @@ class Unit:
 class Catalog:
     """config.yaml + packages.yaml with everything needed to resolve units."""
 
-    def __init__(self, config, packages, jobs=None):
+    def __init__(self, config, packages, jobs=None, arch=None):
         self.config = config
         self.packages = packages.get("package", {})
         self.jobs = jobs or os.cpu_count() or 1
+        self.arch = arch or detect_arch()
 
     def package(self, name):
         if name not in self.packages:
@@ -129,7 +153,7 @@ class Catalog:
             raise ModelError(f"invalid tag '{tag}'")
         if tag not in package.get("tags", []):
             raise ModelError(f"package '{name}' is not tagged '{tag}' (tags: {package.get('tags', [])})")
-        unit = Unit(name, variant, tag, package, select_variant(name, package, variant))
+        unit = Unit(name, canonical_variant(package, variant), tag, package, select_variant(name, package, variant))
         unit.context = self._context(unit)
         return unit
 
@@ -142,6 +166,7 @@ class Catalog:
             "package_name": unit.name,
             "tag": unit.tag,
             "jobs": self.jobs,
+            "arch": self.arch,
             "full_version": v["full_version"],
             "major_version": v["major_version"],
             "patch_version": v["patch_version"],
@@ -189,6 +214,35 @@ class Catalog:
         return ordered
 
 
+    def publishable_units(self, packages=None):
+        """Every (package, variant) under its publish role, with hashes resolved, in catalog order."""
+        units = []
+        for name in sorted(packages or self.packages):
+            package = self.package(name)
+            for variant in package.get("variant", []):
+                unit = self.unit(name, variant["name"][0] if isinstance(variant["name"], list) else variant["name"],
+                                 publish_tag(package))
+                self.plan(unit)
+                units.append(unit)
+        return sorted(units, key=lambda u: (_depth(u), u.name, u.variant))        # dependencies first
+
+    def dependents(self, name):
+        """Packages that depend on `name`, directly or transitively (sorted)."""
+        found, frontier = set(), {name}
+        while frontier:
+            current = frontier.pop()
+            for other, package in self.packages.items():
+                deps = {d if isinstance(d, str) else d["name"] for d in package.get("depends_on", [])}
+                if current in deps and other not in found:
+                    found.add(other)
+                    frontier.add(other)
+        return sorted(found)
+
+
+def _depth(unit):
+    return 1 + max((_depth(d) for d in unit.depends), default=-1)
+
+
 def recipe_hash(unit):
     """Hash of everything that influences the produced artifact, including dependency hashes:
     a change in a library invalidates every application built on top of it."""
@@ -200,6 +254,7 @@ def recipe_hash(unit):
         "variant": unit.variant_data,
         "tag": unit.tag,
         "prefix": unit.prefix,
+        "arch": unit.context["arch"],
         "depends": [d.recipe_sha256 for d in unit.depends],
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()

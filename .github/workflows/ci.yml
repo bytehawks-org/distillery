@@ -1,5 +1,12 @@
 name: ci
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:                 # also started by watch-upstream on its bot branches
+
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -12,10 +19,19 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -r scripts/requirements.txt
-      - run: python -m unittest discover -s tests -v
+      - run: python -W error::ResourceWarning -m unittest discover -s tests -v
       - name: catalog is consistent (every source pinned, plans resolve)
         run: |
           python scripts/autobuilder.py list
           for p in $(python scripts/autobuilder.py list | awk '{print $1}'); do
-            python scripts/autobuilder.py plan --package "$p" --tag "$(python scripts/autobuilder.py list | awk -v p=$p '$1==p{split($2,t,","); print t[1]}')" --root /tmp/stage | grep -v MISSING
+            tag="$(python scripts/autobuilder.py list | awk -v p=$p '$1==p{split($2,t,","); print t[1]}')"
+            plan="$(python scripts/autobuilder.py plan --package "$p" --tag "$tag" --root /tmp/stage)"
+            echo "$plan"
+            if echo "$plan" | grep -q MISSING; then echo "::error::$p has an unpinned source"; exit 1; fi
           done
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install actionlint-py && actionlint

@@ -11,3 +11,14 @@ config:
     default_prefix: /opt/bytehawks/deps
   applications:
     default_prefix: /opt/bytehawks/{{ name }}
+  # Where built units are kept (see docs/ARTIFACTS.md). `--store` accepts these names, dir:PATH, github[:owner/repo].
+  artifacts:
+    default_stores: [github]
+    stores:
+      github:
+        type: github                  # GitHub Actions artifacts of this repository (GITHUB_REPOSITORY, GITHUB_TOKEN)
+      nexus:
+        type: nexus                   # Sonatype Nexus 3 raw (hosted) repository
+        url: https://nexus.example.com        # or NEXUS_URL; credentials: NEXUS_USER / NEXUS_PASSWORD
+        repository: bytehawks
+        prefix: bytehawks
