@@ -93,9 +93,9 @@ package:
     variant:
       - name: all
         major_version: 10
-        patch_version: 43
-        full_version: 10.43
-        sha256: 889d16be5abb8d05400b33c25e151638b8d4bac0e2d9c76e9d6923118ae8a34e
+        patch_version: 49
+        full_version: '10.49'
+        sha256: 929f0b20e62879252a15886b06c89f1edef61a363cbd5826fb041080a5e557ae
     website: https://www.pcre.org/
     git:
       repo: https://github.com/PCRE2Project/pcre2
