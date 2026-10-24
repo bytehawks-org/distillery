@@ -15,19 +15,19 @@ package:
     variant:
       - name: [old-legacy, legacy]
         major_version: 3.0
-        patch_version: 18
-        full_version: 3.0.18
-        sha256: d80c34f5cf902dccf1f1b5df5ebb86d0392e37049e5d73df1b3abae72e4ffe8b
+        patch_version: 22
+        full_version: 3.0.22
+        sha256: 67ebca7e50d17383028045486653492195b83db95f8558709701bb47b5c1ef81
       - name: stable
         major_version: 3.5
-        patch_version: 4
-        full_version: 3.5.4
-        sha256: 967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99
+        patch_version: 9
+        full_version: 3.5.9
+        sha256: 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
       - name: stream
         major_version: 3.6
-        patch_version: 0
-        full_version: 3.6.0
-        sha256: b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9
+        patch_version: 5
+        full_version: 3.6.5
+        sha256: a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98
     website: https://www.{{ name }}.org/
     git:
       repo: https://github.com/{{ name }}/{{ name }}
