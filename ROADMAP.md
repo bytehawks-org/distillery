@@ -64,7 +64,7 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| ⬜ Multi-arch | `arch` matrix (amd64, arm64): per-arch configure targets (replace hard-coded `linux-x86_64`), per-arch checksums only when sources differ |
+| 🚧 Multi-arch / musl | ✅ platform = arch × libc in hashes, names, manifests, pins, packaging; OpenSSL target per arch; Temurin pinned for 4 platforms; Debian + Alpine CI legs; ⬜ **real compilation on musl** (openssl, zlib, pcre2, nginx on Alpine), ⬜ NiFi on musl (native libraries of some NARs), ⬜ arm64 runners, ⬜ cross-compilation |
 | ⬜ Sandboxed builds | run stages in `bwrap`/`unshare`/container: network-less after fetch, read-only source |
 | ⬜ Parallel independent units | schedule the DAG with `--max-units`, per-unit logs |
 | ✅ Remote artifact cache | content-addressed by recipe hash (`--store`, `chain`) with dir/GitHub/Nexus backends; more backends below |
@@ -104,7 +104,7 @@ matching change in the bundle schema / Shaker.
 
 ## Known gaps today (honest list)
 
-* Only `linux-x86_64` is encoded for openssl; no cross-compilation.
+* OpenSSL targets are mapped for amd64 and arm64 but only amd64 was built here; no cross-compilation.
 * Build commands are unsandboxed trusted shell.
 * No signature/SBOM; `checksum`/`bump` trust the download they just made (cross-checked with upstream's checksum when published).
 * The workflows pass `actionlint` and their commands are tested, but have not run on GitHub yet; Nexus has only been tested against a fake server.

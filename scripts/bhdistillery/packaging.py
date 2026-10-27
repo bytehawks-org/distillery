@@ -34,6 +34,9 @@ NATIVE_ARCH = {
     "rpm": {"amd64": "x86_64", "arm64": "aarch64"},
     "apk": {"amd64": "x86_64", "arm64": "aarch64"},
 }
+# The C library each format's target systems use: Debian/Ubuntu and RPM distributions are glibc, Alpine is musl.
+# A package built against the other one installs but does not run, so mixing them is refused.
+FORMAT_LIBC = {"deb": "glibc", "rpm": "glibc", "apk": "musl"}
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9+._-]*$")
 VERSION_RE = re.compile(r"^[0-9][A-Za-z0-9.+~]*$")
 
@@ -52,6 +55,7 @@ DEFAULTS = {
     "homepage": "",
     "license": "",
     "section": "misc",
+    "allow_cross_libc": False,       # true = allow e.g. an apk of glibc binaries (will not run on Alpine)
     "nfpm": "",                      # path of the nfpm binary; default: BH_NFPM, PATH
     "shaker": {"post_install": True, "shaker_path": "/opt/bytehawks/core/shaker/bin/shaker"},
     "signing": {},                   # {deb|rpm|apk: {key_file, key_id | key_name}}; passphrase: NFPM_PASSPHRASE (nfpm)
@@ -78,6 +82,18 @@ def settings(config):
     return merged
 
 
+def default_formats(conf, libc):
+    """The configured formats whose target systems use `libc`."""
+    return [f for f in conf["formats"] if FORMAT_LIBC[f] == libc or conf["allow_cross_libc"]]
+
+
+def check_libc(unit, fmt, conf):
+    libc = unit.context["libc"]
+    if FORMAT_LIBC[fmt] != libc and not conf["allow_cross_libc"]:
+        raise PackagingError(f"{unit.name} is built for {libc} but {fmt} packages are installed on {FORMAT_LIBC[fmt]} "
+                             f"systems: build it with --libc {FORMAT_LIBC[fmt]} (or set packaging.allow_cross_libc)")
+
+
 def native_arch(fmt, arch):
     try:
         return NATIVE_ARCH[fmt][arch]
@@ -92,7 +108,7 @@ def _context(unit, conf):
         "name": unit.name, "variant": unit.variant, "variant_suffix": variant_suffix, "tag": unit.tag,
         "arch": unit.context["arch"], "version": str(unit.variant_data["full_version"]),
         "major_version": unit.variant_data["major_version"], "recipe12": unit.recipe_sha256[:12],
-        "release": conf["release"],
+        "release": conf["release"], "libc": unit.context["libc"],
     }
 
 
@@ -257,6 +273,7 @@ def build_packages(catalog, unit, formats, out_dir, conf, *, dry_run=False, with
         dependencies = [(package_name(d, conf), package_version(d)) for d in by_name.values()]
         conflicts = conflicts_for(catalog, item, conf)
         for fmt in formats:
+            check_libc(item, fmt, conf)
             target = out_dir / file_name(item, conf, fmt)
             if dry_run:
                 files = sum(1 for e in contents(item) if e.get("type") != "dir")

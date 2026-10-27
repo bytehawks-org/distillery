@@ -101,6 +101,40 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(riscv.context["arch_name"], "riscv64")
         self.assertNotEqual(amd.recipe_sha256, arm.recipe_sha256)
 
+    def test_libc_is_part_of_the_platform_identity_and_the_hash(self):
+        from bhdistillery.model import Catalog, ModelError, apply_root
+        pkg = package("file:///x-{{ libc_name }}.tgz", "ignored", libc_map={"musl": "alpine-linux"})
+        pkg["variant"][0]["sha256"] = {"amd64": "a" * 64, "amd64-musl": "c" * 64, "arm64": "b" * 64}
+        packages = {"package": {"demo": pkg}}
+
+        def unit(arch, libc):
+            cat = Catalog(apply_root(CONFIG, "/r"), packages, jobs=1, arch=arch, libc=libc)
+            u = cat.unit("demo")
+            cat.plan(u)
+            return u
+
+        glibc, musl, arm_musl = unit("amd64", "glibc"), unit("amd64", "musl"), unit("arm64", "musl")
+        self.assertEqual((glibc.context["platform"], musl.context["platform"]), ("amd64", "amd64-musl"))
+        self.assertEqual((glibc.context["libc_name"], musl.context["libc_name"]), ("glibc", "alpine-linux"))
+        self.assertEqual((glibc.variant_data["sha256"], musl.variant_data["sha256"]), ("a" * 64, "c" * 64))
+        self.assertEqual(arm_musl.variant_data["sha256"], "b" * 64)         # no arm64-musl pin: falls back to the arch pin
+        self.assertNotEqual(glibc.recipe_sha256, musl.recipe_sha256)
+        from bhdistillery.store import entry_for
+        self.assertEqual(entry_for(glibc, glibc.context["platform"]).name.split("--")[4], "amd64")      # names of glibc unchanged
+        self.assertEqual(entry_for(musl, musl.context["platform"]).name.split("--")[4], "amd64-musl")
+        with self.assertRaises(ModelError):
+            Catalog(apply_root(CONFIG, "/r"), packages, libc="uclibc")
+
+    def test_libc_detection_can_be_forced(self):
+        import os
+        from bhdistillery.model import detect_libc
+        os.environ["BH_LIBC"] = "musl"
+        try:
+            self.assertEqual(detect_libc(), "musl")
+        finally:
+            del os.environ["BH_LIBC"]
+        self.assertIn(detect_libc(), ("glibc", "musl"))
+
     def test_hash_depends_on_prefix(self):
         h = lambda root: (lambda c: c.plan(c.unit("a", tag="library"))[-1].recipe_sha256)(catalog(pkgs(a=[]), root))
         self.assertNotEqual(h("/r1"), h("/r2"))

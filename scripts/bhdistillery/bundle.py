@@ -147,6 +147,8 @@ def manifest(unit, built=False):
         "tag": unit.tag,
         "version": str(unit.variant_data["full_version"]),
         "prefix": unit.prefix,
+        "arch": unit.context["arch"],
+        "libc": unit.context["libc"],
         "source": unit.context["git"].get("release_download_url_template", ""),
         "source_sha256": unit.variant_data.get("sha256", ""),
         "recipe_sha256": unit.recipe_sha256,

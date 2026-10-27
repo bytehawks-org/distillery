@@ -80,13 +80,13 @@ def write_file_list(unit, paths, destination):
     return lines
 
 
-def build_tarball(unit, rel_paths, out_dir, arch, built_epoch=None):
+def build_tarball(unit, rel_paths, out_dir, platform, built_epoch=None):
     """Deterministic tar.gz of `rel_paths` (relative to unit.prefix), stored relative to the root."""
     from .store import entry_for
 
     root = Path(unit.context["config"]["root"])
     prefix = Path(unit.prefix)
-    entry = entry_for(unit, arch)
+    entry = entry_for(unit, platform)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     tarball = out_dir / f"{entry.name}.tar.gz"
@@ -111,7 +111,7 @@ def build_tarball(unit, rel_paths, out_dir, arch, built_epoch=None):
         "schema": META_SCHEMA,
         "generator": f"distillery/{__version__}",
         "name": entry.name,
-        "package": unit.name, "variant": unit.variant, "tag": unit.tag, "arch": arch,
+        "package": unit.name, "variant": unit.variant, "tag": unit.tag, "arch": unit.context["arch"], "libc": unit.context["libc"], "platform": platform,
         "version": entry.version, "recipe_sha256": unit.recipe_sha256,
         "root": str(root), "prefix": str(prefix),
         "files": len(members),

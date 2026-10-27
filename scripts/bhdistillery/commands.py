@@ -152,10 +152,12 @@ def cmd_bump(catalog, args):
         url, digest = bumper.fetch_checksum(unit, version, log=eprint)
         if isinstance(_raw_variant(catalog, finding).get("sha256"), dict):          # pinned per architecture
             digest = {}
-            for arch in _raw_variant(catalog, finding)["sha256"]:
-                per_arch = Catalog(catalog.config, {"package": catalog.packages}, catalog.jobs, arch, catalog.assets_root)
-                digest[arch] = bumper.fetch_checksum(
-                    per_arch.unit(finding.package, finding.variant, unit.tag), version, log=eprint)[1]
+            for key in _raw_variant(catalog, finding)["sha256"]:             # "amd64" or "amd64-musl"
+                arch, _, libc = key.partition("-")
+                per_platform = Catalog(catalog.config, {"package": catalog.packages}, catalog.jobs, arch,
+                                       catalog.assets_root, libc or "glibc")
+                digest[key] = bumper.fetch_checksum(
+                    per_platform.unit(finding.package, finding.variant, unit.tag), version, log=eprint)[1]
         result = {"package": finding.package, "variant": finding.variant, "from": finding.current,
                   "to": version, "sha256": digest, "source": url, "newer_series": finding.newer_series}
         if not args.dry_run:
@@ -173,7 +175,7 @@ def cmd_bump(catalog, args):
 # ------------------------------------------------------------------------ artifacts
 
 def _status(unit, inventory):
-    wanted = entry_for(unit, unit.context["arch"])
+    wanted = entry_for(unit, unit.context["platform"])
     if any(e.name == wanted.name for e in inventory):
         return "present", wanted
     superseded = [e for e in inventory if e.key() == wanted.key()]
@@ -278,11 +280,14 @@ def cmd_package(catalog, args):
     from . import packaging
 
     conf = packaging.settings(catalog.config)
-    formats = [f for f in (args.format or ",".join(conf["formats"])).replace(" ", "").split(",") if f]
+    unit = catalog.unit(args.package, args.variant, args.tag)
+    formats = ([f for f in args.format.replace(" ", "").split(",") if f] if args.format
+               else packaging.default_formats(conf, catalog.libc))
     bad = [f for f in formats if f not in packaging.FORMATS]
     if bad:
         raise packaging.PackagingError(f"unknown format(s): {', '.join(bad)} (use {', '.join(packaging.FORMATS)})")
-    unit = catalog.unit(args.package, args.variant, args.tag)
+    if not formats:
+        raise packaging.PackagingError(f"no configured package format targets {catalog.libc} systems")
     if catalog.config["config"]["root"] != "/opt/bytehawks":
         eprint(f"warning: built under {catalog.config['config']['root']}: the packages install to exactly these paths "
                "(build with the default root for packages meant for /opt/bytehawks)")

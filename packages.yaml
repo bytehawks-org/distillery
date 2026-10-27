@@ -28,6 +28,7 @@ package:
         patch_version: 0
         full_version: 3.6.0
         sha256: b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9
+    arch_map: {amd64: linux-x86_64, arm64: linux-aarch64}      # OpenSSL's Configure target (musl and glibc alike)
     license: Apache-2.0
     website: https://www.{{ name }}.org/
     git:
@@ -36,7 +37,7 @@ package:
       release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
     commands:
       configure: |
-        ./Configure linux-x86_64 \
+        ./Configure {{ arch_name }} \
           --prefix={{ prefix }} \
           --libdir=lib \
           --openssldir={{ prefix }}/etc/ssl \
@@ -222,15 +223,18 @@ package:
         patch_version: 0
         full_version: 21.0.9
         build: 10
-        sha256:
+        sha256:                                     # per platform: <arch> (glibc) and <arch>-musl (Alpine builds)
           amd64: aeab55d064a1a27a3744b0880b9b414077b4ed2b1790817eea3df60aec946431
           arm64: 1d041073c65e834bdb4da732485a54ff829859dcd1549e7992f15bd73341be29
+          amd64-musl: 17aca4ecc1600f70ec88ea0f8bf3a06ba6806bdae8c96d03c07683c800f0d4e8
+          arm64-musl: 7f8c230ba505b418e4288e2b34758a6e4da32470944740e5ba0cfaae02271c22
     arch_map: {amd64: x64, arm64: aarch64}
+    libc_map: {glibc: linux, musl: alpine-linux}
     license: GPL-2.0-with-classpath-exception
     website: https://adoptium.net/
     git:
       repo: https://github.com/adoptium/temurin{{ major_version }}-binaries
-      release_download_url_template: "{{ git.repo }}/releases/download/jdk-{{ full_version }}%2B{{ variant.build }}/OpenJDK{{ major_version }}U-jre_{{ arch_name }}_linux_hotspot_{{ full_version }}_{{ variant.build }}.tar.gz"
+      release_download_url_template: "{{ git.repo }}/releases/download/jdk-{{ full_version }}%2B{{ variant.build }}/OpenJDK{{ major_version }}U-jre_{{ arch_name }}_{{ libc_name }}_hotspot_{{ full_version }}_{{ variant.build }}.tar.gz"
     # Signature made with the Adoptium key; the fingerprint below is the trust anchor, the key is fetched by it.
     signature:
       type: gpg

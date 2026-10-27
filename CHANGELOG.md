@@ -16,6 +16,12 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 - **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
   `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
 - **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **glibc and musl.** New platform dimension `libc` (`--libc`, `BH_LIBC`, detected from the host): part of the recipe hash and of the manifest;
+  artifact identity `…--amd64--…` (glibc, names unchanged) and `…--amd64-musl--…`; `sha256` maps accept `<arch>` and `<arch>-musl` keys;
+  `libc_map` / `{{ libc_name }}`, `{{ libc }}`, `{{ platform }}` in templates. Temurin is pinned for the four platforms (Alpine builds
+  included), OpenSSL's Configure target follows the architecture. `package` ties deb/rpm to glibc and apk to musl.
+  Workflows: `build.yml` now calls `build-platform.yml` once per libc (Debian and Alpine images); `ci.yml` checks that every source is
+  pinned for amd64/arm64 × glibc/musl and runs the test-suite on Alpine. Hashes of existing units change once (libc joins the recipe).
 - **Native packages.** `package` writes deb, rpm and apk of a built unit with nfpm: file list from `files.sha256`, exact-version
   dependencies in each format's syntax, conflicts between variants, optional post-install running `shaker install`, optional package
   signing, `SHA256SUMS`. Package and file names are templates in `config.yaml` (`packaging.name_template`, `file_name_template`,

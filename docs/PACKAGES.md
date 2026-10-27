@@ -94,7 +94,10 @@ variant:
   - name: stable
     sha256: {amd64: aeab55..., arm64: 1d0410...}      # or a plain string when the source is the same everywhere
 ```
-An architecture without a pin is "not pinned": the build refuses. `checksum --arch arm64` prints the value to pin;
+Keys are `<arch>` or, for sources that differ by C library, `<arch>-musl` (`amd64-musl`): the most specific one wins, so a source
+that is the same on both libcs needs only the `<arch>` entries. `libc_map: {glibc: linux, musl: alpine-linux}` gives `{{ libc_name }}`
+(Temurin names its Alpine builds that way); `{{ libc }}` (`glibc`/`musl`) and `{{ platform }}` (`amd64`, `amd64-musl`) are always available.
+A platform without a pin is "not pinned": the build refuses. `checksum --arch arm64` prints the value to pin;
 `bump` recomputes every architecture of a map. `arch` is part of the recipe hash, so artifacts stay per architecture.
 
 ## `publish_tag`

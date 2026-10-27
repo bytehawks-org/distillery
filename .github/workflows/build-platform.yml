@@ -1,0 +1,230 @@
+name: build-platform
+
+# The build pipeline for ONE platform (C library): plan -> libs -> apps -> publish. Called by build.yml once per libc
+# (glibc on Debian, musl on Alpine); see that file for the triggers. Artifact names carry the platform
+# (bh--<package>--...--amd64--... for glibc, ...--amd64-musl--... for musl), so both live in the same stores.
+#
+#   plan  ->  libs (serial, topological)  ->  apps (parallel)  ->  publish to Nexus (optional)
+#
+# "Missing" is decided by comparing each catalog unit's recipe hash with the stores' inventory. Because
+# the hash is a Merkle hash over the recipe, the variant, the prefix, the platform and the dependencies, a change in one
+# library makes exactly that library and its dependents stale.
+
+on:
+  workflow_call:
+    inputs:
+      libc: {type: string, required: false, default: glibc}
+      packages: {type: string, required: false, default: ""}
+      force: {type: boolean, required: false, default: false}
+      reason: {type: string, required: false, default: ""}
+
+permissions:
+  contents: read
+  actions: read                      # list and download artifacts
+
+env:
+  BH_LIBC: ${{ inputs.libc }}                 # makes every command plan and build for this libc
+  # github = this repository's Actions artifacts. Add a Nexus by defining the repository variable NEXUS_URL
+  # (and secrets NEXUS_USER / NEXUS_PASSWORD): it becomes a second, long-term store.
+  STORES: ${{ vars.NEXUS_URL && '--store github --store nexus' || '--store github' }}
+  NEXUS_URL: ${{ vars.NEXUS_URL }}
+  GITHUB_TOKEN: ${{ github.token }}
+  RETENTION_DAYS: ${{ vars.BH_ARTIFACT_RETENTION_DAYS || 90 }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      libs: ${{ steps.stale.outputs.libs }}
+      apps: ${{ steps.stale.outputs.apps }}
+      has_libs: ${{ steps.stale.outputs.has_libs }}
+      has_apps: ${{ steps.stale.outputs.has_apps }}
+      count: ${{ steps.stale.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - name: Compare the catalog with the stores
+        id: stale
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          FORCE: ${{ inputs.force }}
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          args=()
+          [ -n "${PACKAGES:-}" ] && args+=(--package "$PACKAGES")
+          [ "${FORCE:-false}" = "true" ] && args+=(--force)
+          python scripts/autobuilder.py stale $STORES --github-output "$GITHUB_OUTPUT" --format json "${args[@]}" | tee stale.json
+          {
+            echo "### Build plan (${{ inputs.libc }}) ${{ inputs.reason && format('- {0}', inputs.reason) || '' }}"
+            echo
+            echo "Trigger: \`${{ github.event_name }}\` on \`${{ github.ref_name }}\`"
+            echo
+            echo "| status | package | variant | version | recipe |"
+            echo "|---|---|---|---|---|"
+            jq -r '.[] | "| \(.status) | \(.package) | \(.variant) | \(.version) | `\(.recipe12)` |"' stale.json
+            [ "$(jq length stale.json)" = "0" ] && echo "| - | everything already in the store | | | |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  libs:
+    needs: plan
+    if: needs.plan.outputs.has_libs == 'true'
+    runs-on: ubuntu-latest
+    # one at a time and in plan order (dependencies first): a library may need the one built just before it,
+    # which it restores from the artifact the previous job uploaded
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.plan.outputs.libs) }}
+    container: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}      # build on the OLDEST glibc / musl you intend to support
+    steps:
+      - name: Toolchain (glibc)
+        if: inputs.libc == 'glibc'
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
+      - name: Toolchain (musl)
+        if: inputs.libc == 'musl'
+        shell: sh
+        run: |
+          apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
+      - uses: actions/checkout@v4
+      - name: Python environment
+        run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install -r scripts/requirements.txt
+      - name: Signing key
+        # optional: without the secret the artifacts are simply not signed (forks, pull requests)
+        env:
+          BH_SIGNING_PRIVATE_KEY: ${{ secrets.BH_SIGNING_PRIVATE_KEY }}
+          BH_SIGNING_PASSPHRASE: ${{ secrets.BH_SIGNING_PASSPHRASE }}
+        run: |
+          [ -n "${BH_SIGNING_PRIVATE_KEY:-}" ] || { echo "no signing key configured: artifacts will not be signed"; exit 0; }
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          install -d -m 700 "$GNUPGHOME"
+          printf '%s\n' "$BH_SIGNING_PRIVATE_KEY" | gpg --batch --quiet --import
+          printf '%s' "${BH_SIGNING_PASSPHRASE:-}" > "${RUNNER_TEMP}/gpg-pass"
+          chmod 600 "${RUNNER_TEMP}/gpg-pass"
+          fingerprint="$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^fpr/{print $10; exit}')"
+          { echo "GNUPGHOME=$GNUPGHOME"
+            echo "BH_SIGNING_KEY=${{ vars.BH_SIGNING_KEY }}"
+            echo "BH_SIGNING_PASSPHRASE_FILE=${RUNNER_TEMP}/gpg-pass"; } >> "$GITHUB_ENV"
+          [ -n "${{ vars.BH_SIGNING_KEY }}" ] || echo "BH_SIGNING_KEY=$fingerprint" >> "$GITHUB_ENV"
+      - name: Build ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          FORCE: ${{ inputs.force }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
+          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+            --kind library $force --artifacts-dir dist
+      - name: Verify the installed files
+        run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --tag library
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/gnupg" "${RUNNER_TEMP}/gpg-pass"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}.*
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: warn
+      - name: Build log
+        if: failure()
+        run: tail -n 200 /opt/bytehawks/var/log/distillery/*.log || true
+
+  apps:
+    needs: [plan, libs]
+    # run when libs succeeded or was skipped, never after a failure/cancel
+    if: ${{ !cancelled() && !failure() && needs.plan.outputs.has_apps == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.apps) }}
+    container: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
+    steps:
+      - name: Toolchain (glibc)
+        if: inputs.libc == 'glibc'
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
+      - name: Toolchain (musl)
+        if: inputs.libc == 'musl'
+        shell: sh
+        run: |
+          apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
+      - uses: actions/checkout@v4
+      - name: Python environment
+        run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install -r scripts/requirements.txt
+      - name: Signing key
+        # optional: without the secret the artifacts are simply not signed (forks, pull requests)
+        env:
+          BH_SIGNING_PRIVATE_KEY: ${{ secrets.BH_SIGNING_PRIVATE_KEY }}
+          BH_SIGNING_PASSPHRASE: ${{ secrets.BH_SIGNING_PASSPHRASE }}
+        run: |
+          [ -n "${BH_SIGNING_PRIVATE_KEY:-}" ] || { echo "no signing key configured: artifacts will not be signed"; exit 0; }
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          install -d -m 700 "$GNUPGHOME"
+          printf '%s\n' "$BH_SIGNING_PRIVATE_KEY" | gpg --batch --quiet --import
+          printf '%s' "${BH_SIGNING_PASSPHRASE:-}" > "${RUNNER_TEMP}/gpg-pass"
+          chmod 600 "${RUNNER_TEMP}/gpg-pass"
+          fingerprint="$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^fpr/{print $10; exit}')"
+          { echo "GNUPGHOME=$GNUPGHOME"
+            echo "BH_SIGNING_KEY=${{ vars.BH_SIGNING_KEY }}"
+            echo "BH_SIGNING_PASSPHRASE_FILE=${RUNNER_TEMP}/gpg-pass"; } >> "$GITHUB_ENV"
+          [ -n "${{ vars.BH_SIGNING_KEY }}" ] || echo "BH_SIGNING_KEY=$fingerprint" >> "$GITHUB_ENV"
+      - name: Build ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          FORCE: ${{ inputs.force }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
+          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+            --kind application $force --artifacts-dir dist
+      - name: Verify the installed files (application and its dependencies)
+        run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --with-deps
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/gnupg" "${RUNNER_TEMP}/gpg-pass"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}.*
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: warn
+      - name: Build log
+        if: failure()
+        run: tail -n 200 /opt/bytehawks/var/log/distillery/*.log || true
+
+  publish-nexus:
+    needs: [libs, apps]
+    if: ${{ !cancelled() && !failure() && vars.NEXUS_URL != '' && (needs.libs.result == 'success' || needs.apps.result == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bh--*
+          path: dist
+          merge-multiple: true
+      - name: Publish to Nexus
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: python scripts/autobuilder.py publish --store nexus --from dist

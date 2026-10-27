@@ -67,8 +67,9 @@ class Entry:
                 "size": self.size, "created_at": self.created_at, "expires_at": self.expires_at}
 
 
-def entry_for(unit, arch):
-    return Entry(unit.name, unit.variant, unit.tag, arch, str(unit.variant_data["full_version"]),
+def entry_for(unit, platform):
+    """Identity of a unit; `platform` fills the arch slot of the name ("amd64", or "amd64-musl")."""
+    return Entry(unit.name, unit.variant, unit.tag, platform, str(unit.variant_data["full_version"]),
                  unit.recipe_sha256[:12])
 
 

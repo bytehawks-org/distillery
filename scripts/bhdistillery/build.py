@@ -113,7 +113,7 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     log(f"[done] {title} in {time.time() - started:.0f}s, bundle: {out}, {len(changed)} paths recorded")
 
     if artifacts_dir:
-        entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["arch"])
+        entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["platform"])
         log(f"[pack] {tarball} ({meta['size']} bytes, sha256 {meta['sha256'][:12]})")
         signature.sign_artifact(tarball.with_suffix("").with_suffix(".json"), cfg, log)
     return "built"
@@ -123,7 +123,7 @@ def restore_unit(unit, stores, work_dir, log=print):
     """Restore a unit from the first store that has its exact recipe. Returns the entry, or None."""
     from .store import entry_for
 
-    wanted = entry_for(unit, unit.context["arch"])
+    wanted = entry_for(unit, unit.context["platform"])
     for store in stores.stores:
         entry = store.find(wanted)
         if entry is None:

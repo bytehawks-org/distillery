@@ -33,8 +33,9 @@ upstream tags ──► outdated ──► bump ──► PR ──► build: st
 | **Follows upstream** | scheduled GitHub workflow detects new releases (`git ls-remote`, per-variant series), bumps the catalog (new SHA-256, cross-checked with the one upstream publishes) and opens one PR per package |
 | **Rebuilds only what is affected** | catalog units are compared with the artifact stores by recipe hash: a new `zlib` makes `zlib` and `nginx` stale, not `openssl`; libraries build serially in dependency order, applications in parallel |
 | **Artifact stores** | content-addressed, deterministic tarballs; GitHub Actions artifacts today, **Nexus raw repository** implemented, any backend behind one small interface; restore instead of compile; `verify` installed files |
+| **glibc and musl** | every unit builds for both C libraries (`--libc`, Debian and Alpine builder images): separate, content-addressed artifacts (`amd64` / `amd64-musl`), deb/rpm from glibc builds and apk from musl ones |
 | **Signed** | optional detached OpenPGP signature of every artifact (local key or CI secret); `restore`/`chain` accept only pinned signers; sources are verified too (`signature:` in the catalog) |
-| **Tested** | 100 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
+| **Tested** | 103 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
 
 ## Layout
 

@@ -37,7 +37,12 @@ change too. A new `zlib` release makes `zlib` stale; `nginx` becomes stale becau
 One PR per package: updates are reviewed and merged independently and each triggers only its own chain.
 Manual run: *Actions → watch-upstream → Run workflow* (`package` to restrict, `dry_run` to report only).
 
-### `build.yml` - make the stores match the catalog
+### `build.yml` / `build-platform.yml` - make the stores match the catalog
+
+`build.yml` holds the triggers and calls `build-platform.yml` once per C library (`matrix.libc: [glibc, musl]`, `fail-fast: false`):
+the glibc leg runs in a Debian image, the musl leg in an Alpine image (`vars.BH_BUILDER_IMAGE_MUSL`, default `alpine:3.20`;
+`vars.BH_BUILDER_IMAGE`, default `debian:12`, for glibc). The leg sets `BH_LIBC`, so `stale`, `chain` and `verify` plan and build
+for that platform; artifact names carry it (`…--amd64--…` / `…--amd64-musl--…`). The table describes one leg.
 
 | Job | Runs | Does |
 |---|---|---|
@@ -52,8 +57,10 @@ because the bump branch already produced the artifacts, content addressing makes
 not a rebuild), **nightly schedule** (reconcile: GitHub artifacts expire, a build may have failed, the
 catalog may have been edited without a build).
 
-Builds run in a container (`vars.BH_BUILDER_IMAGE`, default `debian:12`). Binaries built against a glibc run
-on that glibc or newer: **build on the oldest distribution you intend to support**.
+Builds run in a container (`vars.BH_BUILDER_IMAGE`, default `debian:12`; musl: `vars.BH_BUILDER_IMAGE_MUSL`, default `alpine:3.20`).
+Binaries built against a glibc run on that glibc or newer, musl ones on that musl or newer: **build on the oldest distribution you
+intend to support**. Not exercised on GitHub yet: JavaScript actions (`checkout`, `upload-artifact`) inside an Alpine container are the
+first thing to check on the first run of the musl leg.
 
 ## One-time repository setup
 
@@ -62,7 +69,7 @@ on that glibc or newer: **build on the oldest distribution you intend to support
 | Settings → Actions → General → *Workflow permissions* | "Allow GitHub Actions to create and approve pull requests" ✔ (needed by `watch-upstream`) |
 | Settings → Actions → General → *Artifact and log retention* | raise to 90 days (maximum) for GitHub as store; also `vars.BH_ARTIFACT_RETENTION_DAYS` |
 | Secret `BH_BOT_TOKEN` (optional) | fine-grained PAT or GitHub App token with `contents:write` + `pull-requests:write`: PRs opened with it trigger `pull_request` workflows normally. Without it the workflows dispatch `ci` and `build` explicitly |
-| Variable `BH_BUILDER_IMAGE` (optional) | container image of the build jobs |
+| Variables `BH_BUILDER_IMAGE`, `BH_BUILDER_IMAGE_MUSL` (optional) | container images of the glibc and musl build jobs |
 | Variable `NEXUS_URL`, secrets `NEXUS_USER`, `NEXUS_PASSWORD` (optional) | enables the Nexus store and `publish-nexus` ([ARTIFACTS](ARTIFACTS.md#nexus)) |
 | Branch protection on `main` | require `ci` and a review: the bot proposes, a human merges |
 

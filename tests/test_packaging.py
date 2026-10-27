@@ -15,7 +15,7 @@ def built(t, packages, name, config_extra=None):
     """Build `packages` (a dict of definitions) under t/root and return (catalog, unit of `name`)."""
     config = apply_root(CONFIG, t / "root")
     config["config"].update(config_extra or {})
-    cat = Catalog(config, {"package": packages}, jobs=1, arch="amd64")
+    cat = Catalog(config, {"package": packages}, jobs=1, arch="amd64", libc="glibc")
     for item in cat.plan(cat.unit(name)):
         build.build_unit(item, t / "assets", log=lambda m: None)
     return cat, cat.unit(name)
@@ -114,6 +114,21 @@ class PackagingTests(unittest.TestCase):
             self.assertIn(str(root / "app" / ".bytehawks" / "files.sha256"), {e["dst"] for e in app_entries})
             self.assertTrue(all(e["file_info"] == {"owner": "root", "group": "root"} for e in app_entries))
 
+    def test_formats_follow_the_libc_of_the_build(self):
+        conf = packaging.settings({})
+        self.assertEqual(packaging.default_formats(conf, "glibc"), ["deb", "rpm"])
+        self.assertEqual(packaging.default_formats(conf, "musl"), ["apk"])
+        with TempDir() as t:
+            cat, app = built(t, demo_packages(t), "app")                  # built for the host libc (glibc in CI images)
+            musl_cat = Catalog(apply_root(CONFIG, t / "root"), {"package": demo_packages(t)}, jobs=1, arch="amd64", libc="musl")
+            musl_app = musl_cat.unit("app")
+            musl_cat.plan(musl_app)
+            with self.assertRaises(PackagingError) as ctx:
+                packaging.check_libc(musl_app, "deb", conf)
+            self.assertIn("--libc glibc", str(ctx.exception))
+            packaging.check_libc(musl_app, "apk", conf)
+            packaging.check_libc(musl_app, "deb", packaging.settings({"config": {"packaging": {"allow_cross_libc": True}}}))
+
     def test_unbuilt_unit_is_refused(self):
         with TempDir() as t:
             cat = Catalog(apply_root(CONFIG, t / "root"), {"package": demo_packages(t)}, jobs=1)
@@ -127,7 +142,7 @@ class PackagingTests(unittest.TestCase):
             pkgs = demo_packages(t, license="MIT", website="https://example.com/app", description="The app")
             cat, app = built(t, pkgs, "app")
             conf = packaging.settings({"config": {"packaging": {
-                "maintainer": "Me <me@example.com>", "signing": {"deb": {"key_file": "/k.asc", "key_id": "ABCD"}}}}})
+                "maintainer": "Me <me@example.com>", "allow_cross_libc": True, "signing": {"deb": {"key_file": "/k.asc", "key_id": "ABCD"}}}}})
             fake = FakeNfpm()
             written = packaging.build_packages(cat, app, ["deb", "rpm", "apk"], t / "out", conf, with_deps=True,
                                                nfpm="/bin/true", runner=fake, log=lambda m: None)

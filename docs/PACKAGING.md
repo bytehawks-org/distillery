@@ -42,6 +42,19 @@ Names must be valid in all three formats (lowercase letters, digits, `+ . _ -`);
 Raise `release` when you republish the same version (a new recipe hash with the same version needs a higher release, or
 the package manager will not upgrade). Putting `{{ recipe12 }}` in the file name makes files unique per build.
 
+## glibc and musl
+
+Debian/Ubuntu and RPM distributions use glibc, Alpine uses musl, and a binary built for one does not run on the other. `package`
+therefore ties the format to the libc the unit was built for: **deb and rpm need a glibc build, apk a musl build**. Without `--format`
+it writes the configured formats that match (`--libc musl` → only apk); asking for a mismatching one is an error
+(`packaging.allow_cross_libc: true` lifts it, for the rare case of static binaries). `{{ libc }}` is available in the name templates.
+
+```sh
+autobuilder.py build   --package nginx --with-deps --libc glibc   && autobuilder.py package --package nginx --with-deps   # deb, rpm
+autobuilder.py build   --package nginx --with-deps --libc musl    && autobuilder.py package --package nginx --with-deps --libc musl   # apk
+```
+(the `--libc` default is the host's, so on an Alpine builder it can be omitted).
+
 ## What goes in a package
 
 * Every file and symlink the build installed, owned by `root:root`, at the **same absolute paths** (`/opt/bytehawks/<name>/…`),
@@ -80,8 +93,6 @@ automatically under the build root.
 * Build with the default root. A unit built with `--root /x` has `/x` baked into its configuration and RPATHs; `package` warns, and
   the package installs to exactly those paths.
 * The package does not declare a dependency on the C library: build on the **oldest** distribution you intend to support
-  (the build workflow uses `debian:12`), as with the tarball artifacts.
-* A package is the whole unit, in the format of the host family: deb for Debian/Ubuntu, rpm for Fedora/RHEL/SUSE, apk for Alpine —
-  but the binaries are glibc builds. Alpine (musl) needs units built on Alpine, which is not covered yet.
+  (the build workflow uses `debian:12` and `alpine:3.20`), as with the tarball artifacts.
 * Repository metadata (`apt` Packages/Release, `createrepo`, `APKINDEX`) is not generated; publish the files to your own
   repository tooling (Nexus, aptly, pulp, …).

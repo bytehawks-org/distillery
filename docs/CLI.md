@@ -18,6 +18,7 @@ Output: progress and build output on stdout, errors on stderr.
 | `--assets DIR` | `<repo>/assets` | where `assets/<package>/` live |
 | `--root DIR` | from `config.yaml` | rebase every path ([CONFIG](CONFIG.md#--root)) |
 | `--arch NAME` | detected (`amd64`, `arm64`) | architecture label, part of the recipe hash and of artifact names |
+| `--libc glibc\|musl` | detected (`BH_LIBC` overrides): musl when `/lib/ld-musl-*` exists | C library the units are built for; part of the recipe hash, of the artifact name (`amd64-musl`) and of the manifest |
 
 ## `list`
 ```

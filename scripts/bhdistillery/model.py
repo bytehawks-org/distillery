@@ -86,6 +86,18 @@ def detect_arch():
         machine, "armv7" if machine.startswith("armv7") else machine)
 
 
+LIBCS = ("glibc", "musl")
+
+
+def detect_libc():
+    """The C library of this host: BH_LIBC, else musl when a musl dynamic loader is installed, else glibc."""
+    forced = os.environ.get("BH_LIBC")
+    if forced:
+        return forced
+    import glob
+    return "musl" if glob.glob("/lib/ld-musl-*") or glob.glob("/usr/lib/ld-musl-*") else "glibc"
+
+
 def publish_tag(package):
     """Role under which a package is published: library when it can be one, else its first tag."""
     tags = package.get("tags", [])
@@ -135,12 +147,17 @@ class Unit:
 class Catalog:
     """config.yaml + packages.yaml with everything needed to resolve units."""
 
-    def __init__(self, config, packages, jobs=None, arch=None, assets_root=None):
+    def __init__(self, config, packages, jobs=None, arch=None, assets_root=None, libc=None):
         self.config = config
         self.assets_root = Path(assets_root) if assets_root else None
         self.packages = packages.get("package", {})
         self.jobs = jobs or os.cpu_count() or 1
         self.arch = arch or detect_arch()
+        self.libc = libc or detect_libc()
+        if self.libc not in LIBCS:
+            raise ModelError(f"unknown libc '{self.libc}' (use {', '.join(LIBCS)})")
+        # identity of the platform in artifact names: glibc keeps the plain arch, musl is "<arch>-musl"
+        self.platform = self.arch if self.libc == "glibc" else f"{self.arch}-{self.libc}"
 
     def package(self, name):
         if name not in self.packages:
@@ -162,10 +179,11 @@ class Catalog:
         return unit
 
     def _variant_for_arch(self, variant):
-        """`sha256` may be a map {amd64: ..., arm64: ...} when the source differs per architecture: the unit
-        sees the scalar of its own arch ('' = not pinned for it, the build refuses)."""
-        if isinstance(variant.get("sha256"), dict):
-            variant = {**variant, "sha256": variant["sha256"].get(self.arch, "")}
+        """`sha256` may be a map when the source differs per platform. Keys: "<arch>-<libc>" (amd64-musl) or just
+        "<arch>" (amd64); the most specific one wins. The unit sees the scalar ('' = not pinned for it: the build refuses)."""
+        pins = variant.get("sha256")
+        if isinstance(pins, dict):
+            variant = {**variant, "sha256": pins.get(f"{self.arch}-{self.libc}", pins.get(self.arch, ""))}
         return variant
 
     def _context(self, unit):
@@ -178,6 +196,9 @@ class Catalog:
             "tag": unit.tag,
             "jobs": self.jobs,
             "arch": self.arch,
+            "libc": self.libc,
+            "platform": self.platform,
+            "libc_name": unit.package.get("libc_map", {}).get(self.libc, self.libc),     # e.g. musl -> alpine-linux
             "full_version": v["full_version"],
             "major_version": v["major_version"],
             "patch_version": v["patch_version"],
@@ -285,6 +306,7 @@ def recipe_hash(unit):
         "tag": unit.tag,
         "prefix": unit.prefix,
         "arch": unit.context["arch"],
+        "libc": unit.context["libc"],
         "depends": [d.recipe_sha256 for d in unit.depends],
     }
     if unit.assets_sha256:                       # absent for packages without assets: their hashes do not change
