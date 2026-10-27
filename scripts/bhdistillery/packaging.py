@@ -57,7 +57,9 @@ DEFAULTS = {
     "section": "misc",
     "allow_cross_libc": False,       # true = allow e.g. an apk of glibc binaries (will not run on Alpine)
     "nfpm": "",                      # path of the nfpm binary; default: BH_NFPM, PATH
-    "shaker": {"post_install": True, "shaker_path": "/opt/bytehawks/core/shaker/bin/shaker"},
+    # Shaker is optional: without it the package still installs, the post-install only tells what to run.
+    # `package`: name of a package that provides Shaker (e.g. bytehawks-shaker); services then depend on it.
+    "shaker": {"post_install": True, "shaker_path": "/opt/bytehawks/core/shaker/bin/shaker", "package": ""},
     "signing": {},                   # {deb|rpm|apk: {key_file, key_id | key_name}}; passphrase: NFPM_PASSPHRASE (nfpm)
 }
 
@@ -175,6 +177,9 @@ def installed_paths(unit):
         else:
             files.append(full)
     files.append(listing)                                      # written last, not listed inside itself
+    for sealed in ("bundle.sha256", "bundle.sha256.asc"):       # the seal of the bundle, written after files.sha256
+        if (unit.bundle_dir / sealed).is_file():
+            files.append(unit.bundle_dir / sealed)
     return files, links, dirs
 
 
@@ -218,7 +223,8 @@ def nfpm_config(unit, conf, fmt, dependencies, conflicts, scripts_dir=None):
         "maintainer": conf["maintainer"] or "ByteHawks Distillery <noreply@example.com>",
         "vendor": conf["vendor"], "homepage": unit.package.get("website") or conf["homepage"],
         "license": unit.package.get("license") or conf["license"],
-        "depends": [dependency(fmt, n, v, conf["release"]) for n, v in dependencies],
+        "depends": [dependency(fmt, n, v, conf["release"]) for n, v in dependencies]
+                   + ([conf["shaker"]["package"]] if conf["shaker"].get("package") and "runtime" in unit.package else []),
         "conflicts": list(conflicts),
         "contents": contents(unit),
     }

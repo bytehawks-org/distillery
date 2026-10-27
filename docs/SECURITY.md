@@ -45,6 +45,13 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
 (see `signature:`). Keep the signing key in a secret store (CI) or a hardware token (workstation); a leaked key is revoked
 by removing its fingerprint from the consumers' config.
 
+## Sealed bundles
+
+Every build writes `bundle.sha256` over the bundle files and `files.sha256`, and signs it when a key is configured. A consumer that
+pins the primary fingerprint (Shaker: `BH_SHAKER_TRUSTED_FINGERPRINTS`, `BH_SHAKER_REQUIRE_SIGNATURE`) can verify, at any time and
+without Distillery, that the installed tree is what the pipeline built (`shaker verify --files --require-signature`). `mutable`
+paths are excluded by design, so keep that list short and reviewed. Trust is never read from the bundle itself.
+
 ## Not covered yet
 
 Source signatures other than OpenPGP (minisign/cosign) and for the older packages · SBOM export (CycloneDX/SPDX) · vulnerability

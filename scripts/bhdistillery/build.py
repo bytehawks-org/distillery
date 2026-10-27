@@ -110,6 +110,8 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     files_list = out / "files.sha256"
     artifact.write_file_list(unit, changed, files_list)       # describes everything except itself
     changed.append(str(files_list.relative_to(unit.prefix)))
+    for sealed in bundle.seal(out, cfg, log):                  # digest (and signature) of the whole bundle
+        changed.append(str(sealed.relative_to(unit.prefix)))
     log(f"[done] {title} in {time.time() - started:.0f}s, bundle: {out}, {len(changed)} paths recorded")
 
     if artifacts_dir:

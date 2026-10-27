@@ -10,7 +10,7 @@ package:
     strip_components: 1                      # default 1
     env:         { KEY: value }              # extra build environment (templated)
     commands:    { configure, make, check, install, pre, post }
-    runtime:     { user, dirs, persistence, templates, hooks, run, healthcheck, requires, env }
+    runtime:     { user, dirs, persistence, mutable, templates, hooks, run, healthcheck, requires, env }
     upstream:    { type, repo, tag_regex, checksum_url_template }     # release tracking
     publish_tag: library | application                                # role under which artifacts are published
     tags:        [ library | application ]
@@ -171,6 +171,7 @@ runtime:
 | `run.stop_signal` | used by `shaker stop` and the systemd unit (`TERM` default) |
 | `run.pidfile` | for `--daemon` / `stop` |
 | `healthcheck` | `tcp: {host, port}` (default host 127.0.0.1) or `command: [argv]` |
+| `mutable` | list of paths (files or directories) the runtime rewrites on purpose, e.g. a configuration directory edited by a hook; `verify` and `shaker verify --files` skip them. Rendered templates and the persisted data directory are not in the build's file list and need no entry |
 | `requires` | tools that must exist (PATH, `<prefix>/bin`, `<deps>/bin`) for `shaker verify` |
 
 ### `runtime.env` - parameters

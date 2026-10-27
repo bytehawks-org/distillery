@@ -151,6 +151,12 @@ Signing proves the artifact was produced by the holder of the key, not that its 
 (`signature:` in `packages.yaml`) and review still matter. Use a dedicated signing subkey and keep the primary key offline;
 pin the primary fingerprint.
 
+## Restoring without Distillery
+
+`shaker restore <artifact.tar.gz>` (Shaker) checks what `restore` here checks, with only bash and tar: sha256 of the tarball, the
+signature of the sidecar against fingerprints pinned in the consumer's environment, platform and root, safe member names and links;
+nothing is written before all pass. See [INTEGRATION](INTEGRATION.md).
+
 ## Housekeeping
 
 Superseded artifacts accumulate (every recipe change is a new name). GitHub: retention does it. Nexus: a

@@ -9,6 +9,8 @@ Distillery after a successful build (or by `bundle`):
 ├── manifest.json               identity, provenance
 ├── manifest.env                BH_PKG_* for Shaker (flat)
 ├── files.sha256                every file/directory the build installed, with SHA-256 (tamper check)
+├── bundle.sha256               SHA-256 of the files below and of files.sha256 (sha256sum format)
+├── bundle.sha256.asc           optional OpenPGP signature of bundle.sha256
 ├── rosetta.map                 parameters
 ├── runtime.spec                runtime behaviour
 └── assets/                     templates and hooks copied from distillery/assets/<package>/
@@ -45,7 +47,11 @@ BH_PKG_VERSION=1.28.0
 BH_PKG_VARIANT=stable
 BH_PKG_PREFIX=/opt/bytehawks/nginx
 BH_PKG_RECIPE=a1146e116deab35c59f801307975b40ab20b9f6da9582b0a6c7e11b12c512fa6
+BH_PKG_ARCH=amd64
+BH_PKG_LIBC=glibc
 ```
+`BH_PKG_ARCH` / `BH_PKG_LIBC` (`glibc` or `musl`) are where the build runs; Shaker refuses to install a bundle for another
+platform. Added after the first release of schema 1: a consumer that does not know them ignores them.
 Exported by Shaker; available to templates (`{{ BH_PKG_PREFIX }}`), hooks and the service.
 
 ## `files.sha256`
@@ -55,7 +61,24 @@ Exported by Shaker; available to templates (`{{ BH_PKG_PREFIX }}`), hooks and th
 ----------------------------------------------------------------  deps/share/    directory (new ones only)
 ```
 Paths are relative to the root (`/opt/bytehawks`). Written by `build` (not by `bundle`); checked by
-`autobuilder.py verify`; not listed inside itself. Shaker ignores it today; `shaker verify --files` is planned.
+`autobuilder.py verify` and by `shaker verify --files`; not listed inside itself. Paths under a `mutable` record of
+`runtime.spec` are skipped by both checks.
+
+## `bundle.sha256` and `bundle.sha256.asc`
+
+```
+<64 hex>  manifest.json
+<64 hex>  manifest.env
+<64 hex>  rosetta.map
+<64 hex>  runtime.spec
+<64 hex>  files.sha256
+<64 hex>  assets/<file>                    one line per asset
+```
+`sha256sum -c` format, paths relative to the bundle directory. Written at the end of every build (and by `bundle`, over what
+exists then). With `artifacts.signing.key` configured the file is signed (`bundle.sha256.asc`, armored detached OpenPGP): the
+signature authenticates the bundle and, through `files.sha256`, every installed file. Shaker checks the digest on `install` and
+`verify`, and the signature against **its own** pinned fingerprints (`BH_SHAKER_TRUSTED_FINGERPRINTS`,
+`BH_SHAKER_REQUIRE_SIGNATURE`). See [INTEGRATION](INTEGRATION.md).
 
 ## `rosetta.map`
 
@@ -98,6 +121,7 @@ resolved parameters and `BH_PKG_*`; `{{ }}` has already been resolved by Distill
 | `pidfile` | `path` | run --daemon, stop |
 | `health` | `tcp\|host\|port` or `cmd\|argv0\|...` | verify |
 | `requires` | `tool` | verify |
+| `mutable` | `path` (a file or a directory) | verify --files (skipped): paths the runtime rewrites on purpose |
 
 Real example (nginx):
 

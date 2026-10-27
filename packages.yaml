@@ -291,6 +291,8 @@ package:
         - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1001:0"}
       persistence:
         - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      mutable:                                  # rewritten at every start by the post_init hook: not an integrity violation
+        - "{{ prefix }}/conf"
       hooks:
         post_init: "{{ prefix }}/hooks/post-init.d"
       run:

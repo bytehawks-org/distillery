@@ -18,6 +18,7 @@ import tarfile
 import time
 from pathlib import Path, PurePosixPath
 
+from .templates import resolve_dict_templates
 from . import __version__
 from .fetch import sha256_file
 
@@ -170,10 +171,13 @@ def verify_files(unit):
     if not listing.exists():
         return [f"{listing}: missing (unit not built by this Distillery version?)"]
     root = Path(unit.context["config"]["root"])
+    mutable = [str(Path(p)) for p in resolve_dict_templates(unit.package.get("runtime", {}), unit.context).get("mutable", [])]
     problems = []
     for line in listing.read_text().splitlines():
         digest, _, path = line.partition("  ")
         full = root / path.rstrip("/")
+        if any(str(full) == m or str(full).startswith(m + "/") for m in mutable):
+            continue                                            # rewritten by the runtime on purpose
         if path.endswith("/"):
             if not full.is_dir():
                 problems.append(f"missing directory {path}")

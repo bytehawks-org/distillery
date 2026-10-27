@@ -49,6 +49,7 @@ config:
     shaker:
       post_install: true                             # run `shaker install <pkg>` after installation when Shaker is present
       shaker_path: /opt/bytehawks/core/shaker/bin/shaker
+      package: ""                                    # e.g. bytehawks-shaker: make services depend on the package that provides Shaker
     # signing:                                       # passphrase: NFPM_PASSPHRASE
     #   deb: {key_file: /path/to/private.asc, key_id: ABCD1234}
     #   rpm: {key_file: /path/to/private.asc}

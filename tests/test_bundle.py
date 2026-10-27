@@ -67,6 +67,31 @@ class BundleTests(unittest.TestCase):
             self.assertTrue(hook.stat().st_mode & 0o111)
             self.assertFalse((t / "r" / "demo" / "hooks" / "init.d").exists())      # no assets for that stage
 
+    def test_platform_mutable_and_seal(self):
+        import hashlib
+        with TempDir() as t:
+            (t / "assets" / "demo").mkdir(parents=True)
+            (t / "assets" / "demo" / "demo.conf.tmpl").write_text("port={{ BH_DEMO_PORT }}\n")
+            cat = catalog({"demo": package("file:///x.tgz", "a" * 64, runtime={"mutable": ["{{ prefix }}/conf"]})}, t / "r")
+            unit = cat.unit("demo")
+            cat.plan(unit)
+            self.assertIn(f"mutable|{t / 'r' / 'demo' / 'conf'}", bundle.spec_lines(unit))
+            out = bundle.emit(unit, t / "assets", built=True)
+            env = (out / "manifest.env").read_text()
+            self.assertIn(f"BH_PKG_ARCH={unit.context['arch']}", env)
+            self.assertIn(f"BH_PKG_LIBC={unit.context['libc']}", env)
+
+            (out / "files.sha256").write_text("")
+            written = bundle.seal(out)                                    # no signing key configured: digest only
+            self.assertEqual([p.name for p in written], ["bundle.sha256"])
+            lines = (out / "bundle.sha256").read_text().splitlines()
+            names = [l.split("  ", 1)[1] for l in lines]
+            self.assertEqual(names, ["manifest.json", "manifest.env", "rosetta.map", "runtime.spec", "files.sha256",
+                                     "assets/demo.conf.tmpl"])
+            for line in lines:
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((out / name).read_bytes()).hexdigest(), digest)
+
     def test_variant_keys_are_available_to_templates(self):
         pkg = package("file:///x-{{ variant.build }}.tgz", "a" * 64)
         pkg["variant"][0]["build"] = 10

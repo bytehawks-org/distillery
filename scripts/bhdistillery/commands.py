@@ -96,6 +96,7 @@ def cmd_bundle(catalog, args):
     unit = catalog.unit(args.package, args.variant, args.tag)
     catalog.plan(unit)
     out = bundle.emit(unit, args.assets, args.out)
+    bundle.seal(out, catalog.config["config"], log=eprint)
     print(f"bundle written to {out}")
 
 

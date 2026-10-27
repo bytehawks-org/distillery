@@ -129,6 +129,20 @@ class PackagingTests(unittest.TestCase):
             packaging.check_libc(musl_app, "apk", conf)
             packaging.check_libc(musl_app, "deb", packaging.settings({"config": {"packaging": {"allow_cross_libc": True}}}))
 
+    def test_seal_and_mutable_paths_in_packages_and_verify(self):
+        from bhdistillery import package as artifact
+        with TempDir() as t:
+            pkgs = demo_packages(t)
+            pkgs["app"]["runtime"]["mutable"] = ["{{ prefix }}/bin"]
+            cat, app = built(t, pkgs, "app")
+            self.assertEqual(artifact.verify_files(app), [])
+            (t / "root" / "app" / "bin" / "app.sh").write_text("tampered")
+            self.assertEqual(artifact.verify_files(app), [])                    # bin/ is declared mutable
+            (t / "root" / "app" / ".bytehawks" / "runtime.spec").write_text("tampered")
+            self.assertTrue(any("runtime.spec" in p for p in artifact.verify_files(app)))
+            dst = {e["dst"] for e in packaging.contents(app)}
+            self.assertIn(str(t / "root" / "app" / ".bytehawks" / "bundle.sha256"), dst)
+
     def test_unbuilt_unit_is_refused(self):
         with TempDir() as t:
             cat = Catalog(apply_root(CONFIG, t / "root"), {"package": demo_packages(t)}, jobs=1)
@@ -164,6 +178,16 @@ class PackagingTests(unittest.TestCase):
             sums = (t / "out" / "SHA256SUMS").read_text()
             self.assertEqual(len(sums.splitlines()), 6)
             self.assertIn("bytehawks-app_1.0-1_amd64.deb", sums)
+
+    def test_services_can_depend_on_a_shaker_package(self):
+        with TempDir() as t:
+            cat, app = built(t, demo_packages(t), "app")
+            conf = packaging.settings({"config": {"packaging": {"shaker": {"package": "bytehawks-shaker"}}}})
+            fake = FakeNfpm()
+            packaging.build_packages(cat, app, ["deb"], t / "out", conf, with_deps=True, nfpm="/bin/true", runner=fake, log=lambda m: None)
+            depends = {c["config"]["name"]: c["config"].get("depends", []) for c in fake.calls}
+            self.assertEqual(depends["bytehawks-app"], ["bytehawks-lib (= 1.0-1)", "bytehawks-shaker"])
+            self.assertEqual(depends["bytehawks-lib"], [])                       # no runtime, no Shaker
 
     def test_post_install_can_be_turned_off(self):
         with TempDir() as t:

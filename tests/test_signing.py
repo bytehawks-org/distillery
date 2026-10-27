@@ -6,7 +6,7 @@ import subprocess
 import unittest
 
 from helpers import *  # noqa: F401,F403
-from bhdistillery import build, signature, store as stores
+from bhdistillery import build, bundle, signature, store as stores
 from bhdistillery.model import Catalog, apply_root
 from bhdistillery.store import DirStore, NexusStore, StoreError, meta_bytes
 
@@ -165,6 +165,22 @@ class SigningTests(unittest.TestCase):
             checked.policy = signature.ArtifactPolicy.from_config(policy_config([ring.fingerprint]))
             checked.fetch(checked.inventory()[0], t / "work")
             self.assertEqual(checked.inventory()[0].name + ".json.asc", sig.name)
+
+    def test_bundle_seal_is_signed_and_a_stale_signature_is_removed(self):
+        with TempDir() as t, Keyring(t) as ring:
+            bundle_dir = t / "b"
+            bundle_dir.mkdir()
+            for name in ("manifest.json", "manifest.env", "rosetta.map", "runtime.spec"):
+                (bundle_dir / name).write_text(name)
+            config = {"config": {"artifacts": {"signing": {"key": ring.fingerprint}}}}
+            written = bundle.seal(bundle_dir, config, log=lambda m: None)
+            self.assertEqual([p.name for p in written], ["bundle.sha256", "bundle.sha256.asc"])
+            keys = t / "pub.asc"
+            keys.write_text(ring.run("--armor", "--export", ring.fingerprint).stdout)
+            self.assertEqual(signature.verify_gpg(bundle_dir / "bundle.sha256", bundle_dir / "bundle.sha256.asc", keys,
+                                                  [ring.fingerprint]), ring.fingerprint)
+            bundle.seal(bundle_dir, {"config": {}}, log=lambda m: None)         # signing switched off: no signature left over
+            self.assertFalse((bundle_dir / "bundle.sha256.asc").exists())
 
     def test_nexus_carries_the_signature(self):
         assets = {}
