@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-from . import fetch
+from . import fetch, signature
 from .templates import resolve_template
 from .upstream import in_series, variant_track
 
@@ -52,6 +52,7 @@ def fetch_checksum(unit, new_version, log=print):
     log = _quiet(log)
     with tempfile.TemporaryDirectory() as tmp:
         digest = fetch.download(url, Path(tmp) / "source", allow_unverified=True, log=log)
+        signature.verify_source(unit.package, {**unit.context, "full_version": new_version}, Path(tmp) / "source", url, log)
         template = unit.package.get("upstream", {}).get("checksum_url_template")
         if template:
             published_url = resolve_template(template, {**unit.context, "full_version": new_version,
@@ -73,7 +74,8 @@ def fetch_checksum(unit, new_version, log=print):
 
 
 def apply_bump(packages_file, package, variant_name, new_version, sha256):
-    """Rewrite one variant in place. Returns the (old, new) full_version."""
+    """Rewrite one variant in place. Returns the (old, new) full_version.
+    `sha256` is a string, or a {arch: sha256} map for variants pinned per architecture."""
     yaml = _yaml()
     path = Path(packages_file)
     data = yaml.load(path.read_text())

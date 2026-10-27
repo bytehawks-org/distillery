@@ -82,6 +82,25 @@ class ModelTests(unittest.TestCase):
             hook.chmod(0o755)
             self.assertNotEqual(after["demo"], hashes(t / "assets")["demo"])     # so does the execute bit
 
+    def test_per_arch_sha256_and_arch_name(self):
+        from bhdistillery.model import Catalog, apply_root
+        pkg = package("file:///x-{{ arch_name }}.tgz", "ignored", arch_map={"amd64": "x64", "arm64": "aarch64"})
+        pkg["variant"][0]["sha256"] = {"amd64": "a" * 64, "arm64": "b" * 64}
+        packages = {"package": {"demo": pkg}}
+
+        def unit(arch):
+            cat = Catalog(apply_root(CONFIG, "/r"), packages, jobs=1, arch=arch)
+            u = cat.unit("demo")
+            cat.plan(u)
+            return u
+
+        amd, arm, riscv = unit("amd64"), unit("arm64"), unit("riscv64")
+        self.assertEqual((amd.variant_data["sha256"], arm.variant_data["sha256"]), ("a" * 64, "b" * 64))
+        self.assertEqual((amd.context["arch_name"], arm.context["arch_name"]), ("x64", "aarch64"))
+        self.assertEqual(riscv.variant_data["sha256"], "")                  # not pinned for it: the build refuses
+        self.assertEqual(riscv.context["arch_name"], "riscv64")
+        self.assertNotEqual(amd.recipe_sha256, arm.recipe_sha256)
+
     def test_hash_depends_on_prefix(self):
         h = lambda root: (lambda c: c.plan(c.unit("a", tag="library"))[-1].recipe_sha256)(catalog(pkgs(a=[]), root))
         self.assertNotEqual(h("/r1"), h("/r2"))

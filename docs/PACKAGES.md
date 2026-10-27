@@ -69,6 +69,34 @@ upstream:
 * Quote versions that end in 0 in YAML (`"1.30"`), otherwise they load as numbers.
 * Remove the block to stop tracking a package.
 
+## `signature` - OpenPGP verification of the source
+
+```yaml
+signature:
+  type: gpg                                              # the only type today
+  url_template: "{{ git.release_download_url_template }}.asc"      # default; use .sig where upstream does
+  keys_url: https://downloads.apache.org/nifi/KEYS       # public keys: any URL, key server included
+  fingerprints:                                          # REQUIRED: full 40-hex primary fingerprints = the trust anchor
+    - 3FE925C2BED744021E6169A2F92A93B30C07C6D5           # Pierre Villard
+```
+* Checked in `build` right after the download and **before** extraction or any build command, and in `bump` before
+  a new checksum is pinned. Failure = no build, no bump.
+* The keys are imported into a throw-away keyring; the signature is accepted only if it is good, the key is not
+  expired or revoked, and its **primary** fingerprint is in `fingerprints`. The key host can therefore not add a signer.
+* A release signed by someone new (a new release manager) fails until a human reviews the key and adds the fingerprint.
+* Needs `gpg` on the builder. Pin fingerprints from a trusted channel (upstream site, web of trust), not from the same download.
+
+## `arch_map` and per-architecture sources
+
+```yaml
+arch_map: {amd64: x64, arm64: aarch64}      # our arch name -> the upstream's; {{ arch_name }} in templates
+variant:
+  - name: stable
+    sha256: {amd64: aeab55..., arm64: 1d0410...}      # or a plain string when the source is the same everywhere
+```
+An architecture without a pin is "not pinned": the build refuses. `checksum --arch arm64` prints the value to pin;
+`bump` recomputes every architecture of a map. `arch` is part of the recipe hash, so artifacts stay per architecture.
+
 ## `publish_tag`
 Which role the CI builds and stores for the package: `library` if the package can be one, else its first tag.
 Override for packages with both tags that should be published as applications.

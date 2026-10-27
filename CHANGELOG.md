@@ -16,6 +16,11 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 - **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
   `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
 - **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **GPG verification of sources** (`signature:` block, module `signature.py`): pinned signer fingerprints,
+  keys fetched into a throw-away keyring, checked before extraction in `build` and before pinning in `bump`.
+  Enabled for `nifi` (Apache KEYS) and `temurin` (Adoptium key); verified on the real releases.
+- **Per-architecture sources.** `arch_map` / `{{ arch_name }}` and `sha256: {amd64, arm64}`; `bump` recomputes
+  every architecture; `temurin` is pinned for amd64 and arm64.
 - **Assets in the recipe hash.** The content (and execute bit) of `assets/<package>/` is part of the recipe hash:
   editing a template or hook makes the unit stale. Packages without assets keep their hash; `nginx` has assets,
   so its hash changes once. `Catalog(..., assets_root=)`, `--assets` on every command.

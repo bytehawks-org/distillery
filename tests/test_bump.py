@@ -69,6 +69,16 @@ class BumpTests(unittest.TestCase):
                 bump.fetch_checksum(unit, "1.0", log=lambda m: None)
             self.assertIn("differs", str(ctx.exception))
 
+    def test_apply_bump_writes_a_per_arch_map(self):
+        with TempDir() as t:
+            f = t / "packages.yaml"
+            f.write_text(YAML)
+            bump.apply_bump(f, "demo", "other", "10.44", {"amd64": "e" * 64, "arm64": "f" * 64})
+            import yaml
+            variant = yaml.safe_load(f.read_text())["package"]["demo"]["variant"][1]
+            self.assertEqual(variant["sha256"], {"amd64": "e" * 64, "arm64": "f" * 64})
+            self.assertEqual(str(variant["full_version"]), "10.44")
+
     def test_sha512_published_by_upstream_is_cross_checked(self):
         import hashlib
         with TempDir() as t:

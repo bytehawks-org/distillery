@@ -155,10 +155,18 @@ class Catalog:
             raise ModelError(f"invalid tag '{tag}'")
         if tag not in package.get("tags", []):
             raise ModelError(f"package '{name}' is not tagged '{tag}' (tags: {package.get('tags', [])})")
-        unit = Unit(name, canonical_variant(package, variant), tag, package, select_variant(name, package, variant))
+        unit = Unit(name, canonical_variant(package, variant), tag, package,
+                    self._variant_for_arch(select_variant(name, package, variant)))
         unit.context = self._context(unit)
         unit.assets_sha256 = assets_digest(self.assets_root, name)
         return unit
+
+    def _variant_for_arch(self, variant):
+        """`sha256` may be a map {amd64: ..., arm64: ...} when the source differs per architecture: the unit
+        sees the scalar of its own arch ('' = not pinned for it, the build refuses)."""
+        if isinstance(variant.get("sha256"), dict):
+            variant = {**variant, "sha256": variant["sha256"].get(self.arch, "")}
+        return variant
 
     def _context(self, unit):
         cfg = self.config["config"]
@@ -174,6 +182,8 @@ class Catalog:
             "major_version": v["major_version"],
             "patch_version": v["patch_version"],
             "variant": v,                                  # extra variant keys, e.g. {{ variant.build }}
+            # the upstream's name for this architecture (package.arch_map), e.g. amd64 -> x64
+            "arch_name": unit.package.get("arch_map", {}).get(self.arch, self.arch),
             "git": unit.package.get("git", {}),
             "website": unit.package.get("website", ""),
             "deps_prefix": cfg["libraries"]["default_prefix"],

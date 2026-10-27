@@ -210,7 +210,7 @@ package:
       - application
 
   # Binary repack: the JRE NiFi runs on, as a unit of its own (prefix /opt/bytehawks/temurin).
-  # TODO: x64 only - the URL and the checksum are per architecture (see ROADMAP "Multi-arch").
+  # The artifact and its sha256 are per architecture: arch_map translates our names to Adoptium's.
   temurin:
     variant:
       - name: stable
@@ -218,11 +218,21 @@ package:
         patch_version: 0
         full_version: 21.0.9
         build: 10
-        sha256: aeab55d064a1a27a3744b0880b9b414077b4ed2b1790817eea3df60aec946431
+        sha256:
+          amd64: aeab55d064a1a27a3744b0880b9b414077b4ed2b1790817eea3df60aec946431
+          arm64: 1d041073c65e834bdb4da732485a54ff829859dcd1549e7992f15bd73341be29
+    arch_map: {amd64: x64, arm64: aarch64}
     website: https://adoptium.net/
     git:
       repo: https://github.com/adoptium/temurin{{ major_version }}-binaries
-      release_download_url_template: "{{ git.repo }}/releases/download/jdk-{{ full_version }}%2B{{ variant.build }}/OpenJDK{{ major_version }}U-jre_x64_linux_hotspot_{{ full_version }}_{{ variant.build }}.tar.gz"
+      release_download_url_template: "{{ git.repo }}/releases/download/jdk-{{ full_version }}%2B{{ variant.build }}/OpenJDK{{ major_version }}U-jre_{{ arch_name }}_linux_hotspot_{{ full_version }}_{{ variant.build }}.tar.gz"
+    # Signature made with the Adoptium key; the fingerprint below is the trust anchor, the key is fetched by it.
+    signature:
+      type: gpg
+      url_template: "{{ git.release_download_url_template }}.sig"
+      keys_url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3B04D753C9050D9A5D343F39843C48A565F8F04B"
+      fingerprints:
+        - 3B04D753C9050D9A5D343F39843C48A565F8F04B
     commands:
       install: |
         mkdir -p {{ prefix }}
@@ -247,6 +257,12 @@ package:
     upstream:
       tag_regex: '^rel/nifi-(\d+\.\d+\.\d+)$'
       checksum_url_template: "{{ git.release_download_url_template }}.sha512"
+    # Release managers sign with their own key: a release signed by someone new fails until the fingerprint is reviewed.
+    signature:
+      type: gpg
+      keys_url: https://downloads.apache.org/nifi/KEYS
+      fingerprints:
+        - 3FE925C2BED744021E6169A2F92A93B30C07C6D5      # Pierre Villard, 2.9.0
     commands:
       install: |
         mkdir -p {{ prefix }}

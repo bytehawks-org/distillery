@@ -26,10 +26,10 @@ matching change in the bundle schema / Shaker.
 | Item | Detail |
 |---|---|
 | ✅ Assets in the recipe hash | `assets/<pkg>/` (templates, hooks) is hashed: a hook change makes the unit stale and rebuilds it |
-| ⬜ Per-arch URL/checksum | `temurin` hard-codes `x64`; needs `{{ arch }}` mapping (amd64→x64, arm64→aarch64) and one sha256 per arch |
+| ✅ Per-arch URL/checksum | `arch_map` + `{{ arch_name }}` and `sha256: {amd64: ..., arm64: ...}`; temurin pinned for both (aarch64 hash, signature and ELF type checked, not executed: no arm64 host) |
 | ⬜ `temurin` follows upstream | no `upstream:` block: build number (`variant.build`) is not updated by `bump`; tags are `jdk-21.0.9+10` |
-| ⬜ GPG signature | Apache publishes `.asc` next to the zip; verify before trusting the sha512 fetched from the same host |
-| ⬜ Large artifacts | NiFi is ~775 MB installed: gzip -9 of the tarball, GitHub Actions artifacts and `files.sha256` are slow/heavy; configurable compression, Nexus/OCI store |
+| ✅ GPG signature | nifi (Apache `.asc`, KEYS) and temurin (`.sig`, key fetched by pinned fingerprint) verified; a new release manager fails until the fingerprint is reviewed |
+| 🚧 Large artifacts | measured: NiFi artifact = 803 MB (same as the zip: JAR/NAR are already compressed, gzip level 1/6/9 differ by < 1%), ~55 s to pack. Compression is not the lever; storage is: GitHub Actions quotas (≈ 0.5–1 GB on small plans) fit one NiFi at best → use Nexus/OCI for such packages |
 | ⬜ `files.sha256` vs runtime edits | `verify` flags `conf/*` the hook rewrites at every start; needs a "mutable" marker in `runtime` |
 | ⬜ NiFi extras | keystore/truststore parameters (today NiFi self-signs at start), logging to stdout, cluster mode, `nifi-toolkit`, `nifi-registry`, healthcheck on `/nifi-api` |
 
@@ -38,7 +38,7 @@ matching change in the bundle schema / Shaker.
 | Item | Detail |
 |---|---|
 | ⬜ SBOM | emit CycloneDX (and SPDX) per unit: components = source + dependencies with hashes; ship as `sbom.cdx.json` in the bundle (**contract**: Shaker `verify` can report it) |
-| ⬜ Source signature verification | per variant `signature:` (URL + key/fingerprint) checked with `gpg`/`minisign`/`cosign` before extraction |
+| 🚧 Source signature verification | ✅ OpenPGP (`signature:` block, pinned signer fingerprints, checked in `build` before extraction and in `bump` before pinning; nifi, temurin); ⬜ minisign/cosign, ⬜ enforcement for the older packages (openssl, nginx, zlib, pcre2) |
 | 🚧 Installed-file inventory | `files.sha256` + `autobuilder.py verify` done; add mode/owner and Shaker `verify --files` |
 | ⬜ Vulnerability gate | optional `grype`/`trivy` run on SBOM in CI; fail on severity threshold |
 | ⬜ Reproducible-build check | `build --repro`: build twice in clean dirs with `SOURCE_DATE_EPOCH`, compare file hashes |
@@ -57,7 +57,7 @@ matching change in the bundle schema / Shaker.
 | ⬜ Artifact signing | cosign/minisign signature of tarball + sidecar, verified by `restore` (authenticity, not only integrity) |
 | ⬜ More store backends | GitHub Releases (long retention), S3/MinIO, OCI registry (ORAS), Artifactory |
 | ⬜ Non-git upstreams | `upstream.type: html` (regex on an index page, e.g. nginx.org/download), `pypi`, `url-json` |
-| ⬜ Matrix per architecture | `arm64` runners in the same workflows; per-arch checksum when sources differ |
+| 🚧 Matrix per architecture | ✅ per-arch checksum when sources differ; ⬜ `arm64` runners in the same workflows |
 | ⬜ Release pins | `release.yaml`: a frozen set of recipe hashes = a reproducible, signed distribution (what Shaker deployments target) |
 
 ## 0.5 - build engine

@@ -8,7 +8,7 @@ from pathlib import Path
 from . import bump as bumper
 from . import bundle, fetch, store as stores_mod
 from .build import DEFAULT_STAGES, STAGES, ensure_unit, restore_unit
-from .model import ModelError, publish_tag
+from .model import Catalog, ModelError, publish_tag
 from .store import MultiStore, StoreError, Unsupported, entry_for, open_store
 from .upstream import check_unit
 
@@ -137,6 +137,11 @@ def cmd_outdated(catalog, args):
     return 3 if args.exit_code and any(f.outdated for f in findings) else 0
 
 
+def _raw_variant(catalog, finding):
+    from .model import select_variant
+    return select_variant(finding.package, catalog.package(finding.package), finding.variant)
+
+
 def cmd_bump(catalog, args):
     results = []
     for finding in _findings(catalog, args):
@@ -145,6 +150,12 @@ def cmd_bump(catalog, args):
         version = args.to or finding.latest
         unit = catalog.unit(finding.package, finding.variant, publish_tag(catalog.package(finding.package)))
         url, digest = bumper.fetch_checksum(unit, version, log=eprint)
+        if isinstance(_raw_variant(catalog, finding).get("sha256"), dict):          # pinned per architecture
+            digest = {}
+            for arch in _raw_variant(catalog, finding)["sha256"]:
+                per_arch = Catalog(catalog.config, {"package": catalog.packages}, catalog.jobs, arch, catalog.assets_root)
+                digest[arch] = bumper.fetch_checksum(
+                    per_arch.unit(finding.package, finding.variant, unit.tag), version, log=eprint)[1]
         result = {"package": finding.package, "variant": finding.variant, "from": finding.current,
                   "to": version, "sha256": digest, "source": url, "newer_series": finding.newer_series}
         if not args.dry_run:

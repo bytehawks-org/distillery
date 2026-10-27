@@ -20,7 +20,7 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
 
 | Risk | Control |
 |---|---|
-| A malicious or hijacked upstream tag/tarball enters the catalog through an automatic bump | the bot only **proposes** a pull request; the checksum is cross-checked against the one upstream publishes when available; the PR text asks for release-notes and signature review; protect `main` with required review. Never enable auto-merge for bump PRs without signature verification (roadmap) |
+| A malicious or hijacked upstream tag/tarball enters the catalog through an automatic bump | the bot only **proposes** a pull request; the checksum is cross-checked against the one upstream publishes when available; the PR text asks for release-notes and signature review; protect `main` with required review. Packages with a `signature:` block (nifi, temurin) are verified against pinned signer fingerprints before a bump can pin them; never enable auto-merge for bump PRs of packages without it |
 | Workflow token abuse | least-privilege `permissions:` per workflow (`build`: `contents: read, actions: read`); `build` has no `pull_request_target`, no fork triggers; secrets are only passed to the steps that use them |
 | Token leaked to the artifact blob host | the GitHub store never forwards `Authorization` to the redirect target (test `test_download_never_sends_the_token_to_the_blob_host`) |
 | Poisoned or corrupted store | every fetch re-hashes against the sidecar; `restore` refuses unsafe members and a foreign recipe; `verify` re-checks installed files. This is **integrity only** - writers to the store are trusted. Restrict write access (Nexus role, CI only) |
@@ -36,11 +36,11 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
   for hostile sources use a throw-away container/VM (sandboxing is on the roadmap).
 * `file://` URLs are accepted (tests, air-gapped mirrors) - they are pinned by checksum like any other.
 * The SHA-256 proves "same bytes as when the maintainer pinned them", not "upstream is honest":
-  verify upstream signatures when pinning (`checksum` prints the value, it does not check a signature).
+  declare `signature:` (OpenPGP, pinned signer fingerprints) so `build` and `bump` check it. `checksum` only prints the value; packages without `signature:` (openssl, nginx, zlib, pcre2) are still integrity-only.
 
 ## Not covered yet
 
-Source signature verification (GPG/minisign/cosign) · SBOM export (CycloneDX/SPDX) · vulnerability
+Source signatures other than OpenPGP (minisign/cosign) and for the older packages · SBOM export (CycloneDX/SPDX) · vulnerability
 scanning of the produced tree · reproducible-build verification (two builds, bit-identical) ·
 build sandboxing (network-less, read-only source) · signing the bundle. All on the [ROADMAP](../ROADMAP.md).
 

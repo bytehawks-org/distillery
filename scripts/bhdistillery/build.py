@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import bundle, fetch, package as artifact
+from . import bundle, fetch, package as artifact, signature
 from .templates import resolve_template
 
 STAGES = ("pre", "configure", "make", "check", "install", "post")
@@ -83,6 +83,8 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
         log(f"[plan] {title}")
         log(f"  source   {url}")
         log(f"  sha256   {unit.variant_data.get('sha256') or '(NOT PINNED)'}")
+        if unit.package.get("signature"):
+            log(f"  gpg      signers {', '.join(unit.package['signature'].get('fingerprints', []))}")
         log(f"  prefix   {unit.prefix}")
         log(f"  bundle   {unit.bundle_dir}")
         log("  ----- script -----")
@@ -91,6 +93,7 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
 
     log(f"[build] {title}")
     fetch.download(url, tarball, unit.variant_data.get("sha256", ""), allow_unverified, log)
+    signature.verify_source(unit.package, unit.context, tarball, url, log)
     fetch.extract(tarball, unit.src_dir, strip_components=unit.package.get("strip_components", 1))
 
     Path(unit.prefix).mkdir(parents=True, exist_ok=True)
