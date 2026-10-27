@@ -3,6 +3,22 @@
 All notable changes to Distillery. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 
+## [Unreleased]
+
+### Added
+- **Binary repack: NiFi on Temurin.** `nifi` 2.9.0 (Apache `bin.zip`, nothing compiled) and `temurin` 21.0.9
+  (JRE tarball, x64 only) in the catalog; the pair was built with `--root`, then installed, initialized, started
+  and verified through Shaker (UI 200, login, REST API, `verify` 10/10). Runtime: `BH_NIFI_*` parameters
+  (port, host, proxy hosts, single-user credentials, sensitive props key, heap, data dir, JAVA_HOME), durable
+  state under `BH_NIFI_DATA_DIR`, `post_init` hook that renders the parameters into the shipped configuration.
+- **Zip sources.** `fetch.extract` handles zip archives (same traversal/link checks as tar; Unix modes restored
+  from `external_attr`, setuid/setgid/sticky dropped).
+- **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
+  `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
+- **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **`bump` cross-check with sha512.** `checksum_url_template` may point to a sha256 or a sha512 file (Apache
+  publishes sha512 only); the pin stays sha256.
+
 ## [0.4.0] - 2026-10-23
 
 ### Added

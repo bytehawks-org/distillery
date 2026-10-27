@@ -105,6 +105,22 @@ shaker run valkey --port=6380 --daemon && shaker verify valkey --port=6380 && sh
 ```
 Iterate on `runtime:`/templates without rebuilding: `autobuilder.py bundle --package valkey --root /opt/bhtest`.
 
+### Binary repack (prebuilt distributions, e.g. Java)
+
+When upstream ships a ready-to-run distribution, skip `configure`/`make`: declare only `install`
+(`cp -a . {{ prefix }}/`), pin the archive (zip works) and describe the runtime as usual. A runtime it needs becomes
+a unit of its own (`depends_on: [{name: temurin, variant: stable, tag: application}]`) and its path is exported with
+`native_env` (`BH_NIFI_JAVA_HOME` → `JAVA_HOME`). Configuration that cannot be a template (hundreds of keys, changes
+between releases) is applied by a `post_init` hook shipped in `assets/<pkg>/hooks/post_init/`: idempotent, run at every
+start, writing durable state to a persisted data directory. Reference implementation: `nifi` + `temurin` in
+`packages.yaml`, `assets/nifi/hooks/post_init/10-nifi-config.sh`.
+
+```sh
+autobuilder.py build --package nifi --with-deps --root /opt/bhtest
+export BH_ROOT=/opt/bhtest BH_NIFI_PASSWORD='at-least-12-chars' BH_NIFI_SENSITIVE_PROPS_KEY='at-least-12-chars'
+shaker install nifi && shaker run nifi        # https://localhost:8443/nifi, self-signed certificate
+```
+
 ## 7. Test and document
 
 * CI runs `plan` for every package of the catalog and fails on an unpinned source, so a package without `sha256` cannot be merged.

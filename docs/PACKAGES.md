@@ -47,6 +47,9 @@ variant:
 Selection: `--variant NAME` (default `stable`, otherwise the first declared). Any extra key is kept
 in the recipe hash. The `sha256` is of the downloaded tarball exactly as served.
 
+Extra variant keys are available as `{{ variant.<key> }}` (e.g. `build: 10` → `{{ variant.build }}`) and are part
+of the recipe hash.
+
 ## `upstream` and `track` - following new releases
 
 ```yaml
@@ -62,6 +65,7 @@ upstream:
   are only reported by `outdated`.
 * `checksum_url_template` (optional): URL of a file whose first word is the SHA-256 published by upstream
   (OpenSSL publishes `<tarball>.sha256`). `bump` refuses to write a hash that differs from it.
+* `checksum_url_template` may point to a sha256 (64 hex) or sha512 (128 hex) file; the pin is always sha256.
 * Quote versions that end in 0 in YAML (`"1.30"`), otherwise they load as numbers.
 * Remove the block to stop tracking a package.
 
@@ -77,7 +81,7 @@ git:
   release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
 ```
 `release_download_url_template` is required for `build`/`checksum`. `https://`, `http://` and `file://`
-URLs work. The archive is cached as `<default_download_path>/<basename of the URL>`; other keys are free-form.
+URLs work; the archive may be a tarball (any compression) or a zip (`strip_components` applies to both). The archive is cached as `<default_download_path>/<basename of the URL>`; other keys are free-form.
 
 ## `depends_on`
 
@@ -131,7 +135,7 @@ runtime:
 | `dirs` | created by `shaker install`; `owner` `uid:gid` recursive; numeric `mode` = directory only, symbolic (`g+rwX`) = recursive |
 | `persistence` | `path` inside the image → `volume` mount; seeded on first use then symlinked |
 | `templates` | `src` relative to `assets/<package>/`, rendered at `shaker init` with the parameters; `mode` of the result |
-| `hooks` | directories of scripts for `pre_init` (always), `first_init` (once), `post_init` (always) |
+| `hooks` | directories of scripts for `pre_init` (always), `first_init` (once), `post_init` (always). Files in `assets/<package>/hooks/<stage>/` are copied there (mode 0755) when the bundle is emitted |
 | `run.command` | **argv list** (a string is rejected: no shell); `${BH_X}` expanded by Shaker from parameters |
 | `run.stop_signal` | used by `shaker stop` and the systemd unit (`TERM` default) |
 | `run.pidfile` | for `--daemon` / `stop` |

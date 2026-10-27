@@ -185,7 +185,25 @@ def emit(unit, assets_root, out_dir=None, built=False):
             shutil.rmtree(target)
         shutil.copytree(assets, target)
 
+    install_hooks(unit, assets_root)
     return out
+
+
+def install_hooks(unit, assets_root):
+    """Copy assets/<package>/hooks/<stage>/* into the hook directory the runtime declares for that stage.
+
+    The files keep their relative layout and get the execute bit; the directory is the one Shaker runs.
+    Done at emit time so the hooks are part of the unit (artifact, recipe-tied) without a `post` stage."""
+    runtime = resolve_dict_templates(unit.package.get("runtime", {}), unit.context)
+    for stage, directory in runtime.get("hooks", {}).items():
+        source = Path(assets_root) / unit.name / "hooks" / stage
+        if not source.is_dir():
+            continue
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+        for hook in sorted(p for p in source.iterdir() if p.is_file()):
+            shutil.copy2(hook, target / hook.name)
+            (target / hook.name).chmod(0o755)
 
 
 def is_up_to_date(unit):

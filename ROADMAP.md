@@ -19,6 +19,19 @@ matching change in the bundle schema / Shaker.
 | 6 | **Artifact stores** (dir, GitHub Actions artifacts, Nexus raw), `restore`, `publish`, `inventory` | ✅ dir/github (API listing verified); 🚧 Nexus tested on a fake server only |
 | 6 | **Affected-only build chain** (`stale`, `chain`, build workflow libs → apps) | ✅ code + tests; ⬜ first run on GitHub |
 | 6 | Installed-file inventory (`files.sha256`, `verify`) | ✅ (Shaker integration ⬜) |
+| 7 | **Binary repack** (zip sources, hook install, `variant.*`): NiFi 2.9 on Temurin 21 built and run through Shaker | ✅ (x64 only; see "Binary repack gaps") |
+
+## Binary repack gaps (found building NiFi)
+
+| Item | Detail |
+|---|---|
+| ⬜ Assets in the recipe hash | `assets/<pkg>/` (templates, hooks) is not hashed: changing a hook does not make the unit stale; `bundle` re-emits it, `build` does not |
+| ⬜ Per-arch URL/checksum | `temurin` hard-codes `x64`; needs `{{ arch }}` mapping (amd64→x64, arm64→aarch64) and one sha256 per arch |
+| ⬜ `temurin` follows upstream | no `upstream:` block: build number (`variant.build`) is not updated by `bump`; tags are `jdk-21.0.9+10` |
+| ⬜ GPG signature | Apache publishes `.asc` next to the zip; verify before trusting the sha512 fetched from the same host |
+| ⬜ Large artifacts | NiFi is ~775 MB installed: gzip -9 of the tarball, GitHub Actions artifacts and `files.sha256` are slow/heavy; configurable compression, Nexus/OCI store |
+| ⬜ `files.sha256` vs runtime edits | `verify` flags `conf/*` the hook rewrites at every start; needs a "mutable" marker in `runtime` |
+| ⬜ NiFi extras | keystore/truststore parameters (today NiFi self-signs at start), logging to stdout, cluster mode, `nifi-toolkit`, `nifi-registry`, healthcheck on `/nifi-api` |
 
 ## 0.4 - supply chain & provenance
 

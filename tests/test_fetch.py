@@ -1,6 +1,9 @@
 import io
+import os
+import stat
 import tarfile
 import unittest
+import zipfile
 
 from helpers import *  # noqa: F401,F403
 from bhdistillery import fetch
@@ -56,6 +59,41 @@ class FetchTests(unittest.TestCase):
                 archive.addfile(info)
             with self.assertRaises(fetch.FetchError):
                 fetch.extract(t / "link.tgz", t / "out2")
+
+    def test_extract_zip_restores_modes_and_strips_top(self):
+        with TempDir() as t:
+            with zipfile.ZipFile(t / "app.zip", "w") as archive:
+                run = zipfile.ZipInfo("app-1.0/bin/run.sh")
+                run.external_attr = (stat.S_IFREG | 0o4755) << 16
+                archive.writestr(run, "#!/bin/sh\n")
+                archive.writestr("app-1.0/conf/app.properties", "k=v\n")
+                link = zipfile.ZipInfo("app-1.0/bin/latest")
+                link.external_attr = (stat.S_IFLNK | 0o777) << 16
+                archive.writestr(link, "run.sh")
+            fetch.extract(t / "app.zip", t / "out")
+            self.assertEqual(os.stat(t / "out" / "bin" / "run.sh").st_mode & 0o7777, 0o755)   # setuid dropped
+            self.assertEqual((t / "out" / "conf" / "app.properties").read_text(), "k=v\n")
+            self.assertEqual(os.readlink(t / "out" / "bin" / "latest"), "run.sh")
+
+    def test_extract_zip_rejects_traversal_and_escaping_links(self):
+        with TempDir() as t:
+            with zipfile.ZipFile(t / "evil.zip", "w") as archive:
+                archive.writestr("top/../../evil.txt", "x")
+            with self.assertRaises(fetch.FetchError):
+                fetch.extract(t / "evil.zip", t / "out")
+
+            with zipfile.ZipFile(t / "link.zip", "w") as archive:
+                link = zipfile.ZipInfo("top/l")
+                link.external_attr = (stat.S_IFLNK | 0o777) << 16
+                archive.writestr(link, "../../../etc/passwd")
+            with self.assertRaises(fetch.FetchError):
+                fetch.extract(t / "link.zip", t / "out2")
+
+    def test_hash_file_algorithms(self):
+        with TempDir() as t:
+            (t / "f").write_bytes(b"abc")
+            self.assertEqual(fetch.hash_file(t / "f", "sha256"), fetch.sha256_file(t / "f"))
+            self.assertEqual(len(fetch.hash_file(t / "f", "sha512")), 128)
 
 
 if __name__ == "__main__":

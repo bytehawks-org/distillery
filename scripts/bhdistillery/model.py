@@ -170,6 +170,7 @@ class Catalog:
             "full_version": v["full_version"],
             "major_version": v["major_version"],
             "patch_version": v["patch_version"],
+            "variant": v,                                  # extra variant keys, e.g. {{ variant.build }}
             "git": unit.package.get("git", {}),
             "website": unit.package.get("website", ""),
             "deps_prefix": cfg["libraries"]["default_prefix"],

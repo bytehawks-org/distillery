@@ -69,6 +69,26 @@ class BumpTests(unittest.TestCase):
                 bump.fetch_checksum(unit, "1.0", log=lambda m: None)
             self.assertIn("differs", str(ctx.exception))
 
+    def test_sha512_published_by_upstream_is_cross_checked(self):
+        import hashlib
+        with TempDir() as t:
+            digest = make_tarball(t / "demo-1.0.tgz", {"a": "x"})
+            (t / "demo-1.0.tgz.sha512").write_text(hashlib.sha512((t / "demo-1.0.tgz").read_bytes()).hexdigest() + "\n")
+            pkg = package(f"file://{t}/demo-" + "{{ full_version }}.tgz", "a" * 64,
+                          upstream={"checksum_url_template": "{{ git.release_download_url_template }}.sha512"})
+            unit = catalog({"demo": pkg}, t / "r").unit("demo")
+            url, got = bump.fetch_checksum(unit, "1.0", log=lambda m: None)
+            self.assertEqual(got, digest)                              # still pinned as sha256
+
+            (t / "demo-1.0.tgz.sha512").write_text("0" * 128 + "\n")
+            with self.assertRaises(bump.BumpError) as ctx:
+                bump.fetch_checksum(unit, "1.0", log=lambda m: None)
+            self.assertIn("sha512", str(ctx.exception))
+
+            (t / "demo-1.0.tgz.sha512").write_text("abc\n")
+            with self.assertRaises(bump.BumpError):
+                bump.fetch_checksum(unit, "1.0", log=lambda m: None)
+
 
 if __name__ == "__main__":
     unittest.main()

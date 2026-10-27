@@ -53,6 +53,26 @@ class BundleTests(unittest.TestCase):
                          "stopsignal|QUIT", "health|tcp|127.0.0.1|${BH_DEMO_PORT}", "requires|openssl"):
             self.assertIn(expected, spec)
 
+    def test_hooks_are_installed_from_assets_with_execute_bit(self):
+        with TempDir() as t:
+            (t / "assets" / "demo" / "hooks" / "pre_init").mkdir(parents=True)
+            (t / "assets" / "demo" / "hooks" / "pre_init" / "10-a.sh").write_text("#!/bin/sh\n")
+            cat = catalog({"demo": package("file:///x.tgz", "a" * 64, runtime={
+                "hooks": {"pre_init": "{{ prefix }}/hooks/pre-init.d", "first_init": "{{ prefix }}/hooks/init.d"}})}, t / "r")
+            unit = cat.unit("demo")
+            cat.plan(unit)
+            bundle.emit(unit, t / "assets")
+            hook = t / "r" / "demo" / "hooks" / "pre-init.d" / "10-a.sh"
+            self.assertTrue(hook.is_file())
+            self.assertTrue(hook.stat().st_mode & 0o111)
+            self.assertFalse((t / "r" / "demo" / "hooks" / "init.d").exists())      # no assets for that stage
+
+    def test_variant_keys_are_available_to_templates(self):
+        pkg = package("file:///x-{{ variant.build }}.tgz", "a" * 64)
+        pkg["variant"][0]["build"] = 10
+        unit = catalog({"demo": pkg}, "/r").unit("demo")
+        self.assertEqual(unit.context["variant"]["build"], 10)
+
     def test_spec_rejects_bad_hook_stage_and_shell_string_run(self):
         with self.assertRaises(bundle.BundleError):
             bundle.spec_lines(unit_with({"hooks": {"whenever": "/x"}}))
