@@ -111,7 +111,7 @@ jobs:
       - name: Toolchain
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq
+          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
       - uses: actions/checkout@v4
       - name: Python environment
         run: |
@@ -153,7 +153,7 @@ jobs:
       - name: Toolchain
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq
+          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
       - uses: actions/checkout@v4
       - name: Python environment
         run: |
