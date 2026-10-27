@@ -113,7 +113,8 @@ class NexusStoreTests(unittest.TestCase):
             return 201, {}, b""
 
         def get(handler, body):
-            return 200, {}, assets[handler.path.split("/repository/repo/", 1)[1]]
+            key = handler.path.split("/repository/repo/", 1)[1]
+            return (200, {}, assets[key]) if key in assets else (404, {}, b"")
 
         def listing(handler, body):
             items = [{"path": p, "checksum": {"sha256": __import__("hashlib").sha256(v).hexdigest()}}

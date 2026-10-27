@@ -54,7 +54,7 @@ matching change in the bundle schema / Shaker.
 | ⬜ `prune` | remove superseded artifacts older than N days / keep last K per unit in a store; scheduled |
 | ⬜ Failure notification | open/update an issue when a scheduled build or a bump fails; weekly digest of outdated series (`newer_series`) |
 | ⬜ Auto-merge policy | opt-in auto-merge of patch bumps when ci + build are green **and** a signature check passed |
-| ⬜ Artifact signing | cosign/minisign signature of tarball + sidecar, verified by `restore` (authenticity, not only integrity) |
+| 🚧 Artifact signing | ✅ OpenPGP signature of the sidecar (tarball sha256 + recipe), local keyring or CI secret, verified by `restore`/`chain` against pinned fingerprints, `sign` command; ⬜ cosign/minisign, ⬜ signing the bundle itself, ⬜ first run in CI |
 | ⬜ More store backends | GitHub Releases (long retention), S3/MinIO, OCI registry (ORAS), Artifactory |
 | ⬜ Non-git upstreams | `upstream.type: html` (regex on an index page, e.g. nginx.org/download), `pypi`, `url-json` |
 | 🚧 Matrix per architecture | ✅ per-arch checksum when sources differ; ⬜ `arm64` runners in the same workflows |

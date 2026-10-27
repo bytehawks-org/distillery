@@ -14,6 +14,14 @@ config:
   # Where built units are kept (see docs/ARTIFACTS.md). `--store` accepts these names, dir:PATH, github[:owner/repo].
   artifacts:
     default_stores: [github]
+    # Detached OpenPGP signature of every artifact sidecar (<name>.json.asc; the sidecar holds the tarball sha256 and the recipe).
+    # Sign: set `key` (or BH_SIGNING_KEY) - a key of your gpg keyring locally, an imported secret in CI.
+    # Verify: restore/chain accept only the listed signers when `require` is true. See docs/ARTIFACTS.md.
+    signing:
+      key: ""              # key id / fingerprint used to sign; empty = artifacts are not signed
+      fingerprints: []     # trusted signers: full 40-hex PRIMARY key fingerprints
+      keys: ""             # file or URL with their public keys; empty = take them from the local gpg keyring
+      require: false       # true = refuse unsigned artifacts and artifacts signed by anyone else
     stores:
       github:
         type: github                  # GitHub Actions artifacts of this repository (GITHUB_REPOSITORY, GITHUB_TOKEN)

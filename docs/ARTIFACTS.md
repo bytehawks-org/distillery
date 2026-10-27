@@ -120,6 +120,34 @@ Subclass `Store` in `scripts/bhdistillery/store.py`: `inventory()`, `fetch(entry
 `publish(entry, tarball, meta)`; register it in `open_store`. Candidates: S3/MinIO, OCI registry (artifact per
 unit with ORAS), GitHub Releases (long retention), Artifactory.
 
+## Signatures
+
+Every artifact can carry a detached OpenPGP signature of its sidecar: `<name>.json.asc`. The sidecar holds the sha256 of
+the tarball, the recipe hash and the identity of the unit, so the one signature authenticates all of them (the tarball is
+already checked against the sha256 on every fetch). Stores move the three files together: `dir` (copy), `github` (they
+travel in the same Actions artifact), `nexus` (one more PUT/GET).
+
+| Setting (`artifacts.signing` in `config.yaml`) | Meaning |
+|---|---|
+| `key` / `BH_SIGNING_KEY` | key id or fingerprint to sign with. Empty = artifacts are not signed. |
+| `BH_SIGNING_PASSPHRASE_FILE` | passphrase file for non-interactive signing (gpg loopback pinentry); not needed with gpg-agent/pinentry on a workstation |
+| `fingerprints` | trusted signers (full 40-hex **primary** key fingerprints) checked by `restore` and `chain` |
+| `keys` | file or URL with their public keys; empty = exported from the local gpg keyring |
+| `require` | `true` = refuse unsigned artifacts and artifacts signed by anyone else; `false` = unsigned is tolerated, a **bad** signature never is |
+
+The same code path serves a developer (their own key in `~/.gnupg`) and CI (a key imported from a secret into a
+throw-away `GNUPGHOME`, see AUTOMATION). A common local setup: build anywhere, `autobuilder.py sign --from dist` on a trusted
+workstation, `publish` to your own store; consumers pin your fingerprint and set `require: true`.
+
+```sh
+BH_SIGNING_KEY=ABCD…  autobuilder.py build --package nifi --with-deps --artifacts-dir dist     # signs what it packs
+autobuilder.py sign --from dist                                                                # sign what is still unsigned
+autobuilder.py restore --package nifi --store dir:/srv/bh-store                                # verifies, then installs
+```
+Signing proves the artifact was produced by the holder of the key, not that its contents are harmless: source signatures
+(`signature:` in `packages.yaml`) and review still matter. Use a dedicated signing subkey and keep the primary key offline;
+pin the primary fingerprint.
+
 ## Housekeeping
 
 Superseded artifacts accumulate (every recipe change is a new name). GitHub: retention does it. Nexus: a

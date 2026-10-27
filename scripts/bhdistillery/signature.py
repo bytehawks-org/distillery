@@ -107,3 +107,118 @@ def verify_source(package, context, archive, url, log=print):
         signer = verify_gpg(archive, sig, keys, config["fingerprints"])
     log(f"signature ok: {Path(archive).name} signed by {signer}")
     return signer
+
+
+# ------------------------------------------------------------------ signing built artifacts
+#
+# The sidecar <artifact>.json carries the sha256 of the tarball, the recipe hash and the identity of the unit,
+# so one detached signature over it (<artifact>.json.asc) authenticates all of them. The same code path serves
+# a developer signing with the key in their own keyring and CI signing with a key imported from a secret into a
+# throw-away GNUPGHOME: only the environment differs.
+#
+#   artifacts:
+#     signing:
+#       key: ""            # key id / fingerprint to sign with (or BH_SIGNING_KEY); empty = do not sign
+#       fingerprints: []   # trusted signers (primary key fingerprints) checked by restore / chain
+#       keys: ""           # file or URL with their public keys; empty = export them from the local gpg keyring
+#       require: false     # true = refuse unsigned artifacts and artifacts of other signers
+#   BH_SIGNING_PASSPHRASE_FILE: passphrase for non interactive signing (gpg loopback pinentry)
+
+
+def signing_settings(config):
+    """The effective settings from config.yaml (`config` is the whole file or its `config` section) and the environment."""
+    section = (config or {}).get("config", config or {})
+    settings = dict((section.get("artifacts") or {}).get("signing") or {})
+    return {
+        "key": os.environ.get("BH_SIGNING_KEY") or settings.get("key") or "",
+        "passphrase_file": os.environ.get("BH_SIGNING_PASSPHRASE_FILE") or settings.get("passphrase_file") or "",
+        "fingerprints": [normalize(f) for f in settings.get("fingerprints") or []],
+        "keys": settings.get("keys") or "",
+        "require": bool(settings.get("require", False)),
+    }
+
+
+def sign_file(path, key, passphrase_file="", gpg="gpg", runner=subprocess.run):
+    """Detached, armored signature of `path` written to `path`.asc. Returns the signature path."""
+    if shutil.which(gpg) is None:
+        raise SignatureError(f"{gpg} not found: install GnuPG to sign artifacts")
+    out = Path(str(path) + ".asc")
+    command = [gpg, "--batch", "--no-tty", "--yes", "--armor", "--detach-sign", "--local-user", key, "-o", str(out)]
+    if passphrase_file:
+        command += ["--pinentry-mode", "loopback", "--passphrase-file", str(passphrase_file)]
+    result = runner(command + [str(path)], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SignatureError(f"cannot sign {Path(path).name} with {key}: {result.stderr.strip()[-300:]}")
+    return out
+
+
+def sign_artifact(meta_file, config, log=print):
+    """Sign an artifact sidecar if a signing key is configured. Returns the signature path or None."""
+    settings = signing_settings(config)
+    if not settings["key"]:
+        return None
+    sig = sign_file(meta_file, settings["key"], settings["passphrase_file"])
+    log(f"[sign] {sig.name} with {settings['key']}")
+    return sig
+
+
+def sign_directory(directory, config, force=False, log=print):
+    """Sign every artifact sidecar of a directory that has no signature yet (e.g. built unsigned in CI, signed
+    later on a trusted workstation). Returns the list of signatures written."""
+    settings = signing_settings(config)
+    if not settings["key"]:
+        raise SignatureError("no signing key: set artifacts.signing.key or BH_SIGNING_KEY")
+    written = []
+    for meta_file in sorted(Path(directory).glob("bh--*.json")):
+        if Path(str(meta_file) + ".asc").exists() and not force:
+            continue
+        written.append(sign_artifact(meta_file, config, log))
+    return written
+
+
+def _trusted_keys(spec, fingerprints, workdir, gpg="gpg", runner=subprocess.run):
+    keys = Path(workdir) / "trusted-keys.asc"
+    if spec:
+        if "://" in spec:
+            fetch.download(spec, keys, allow_unverified=True, log=lambda message: None)
+        else:
+            shutil.copyfile(spec, keys)
+    else:
+        result = runner([gpg, "--batch", "--no-tty", "--armor", "--export", *fingerprints], capture_output=True)
+        if result.returncode != 0 or not result.stdout:
+            raise SignatureError("none of the trusted signing keys is in the local gpg keyring "
+                                 "(import them, or set artifacts.signing.keys to a file or URL)")
+        keys.write_bytes(result.stdout)
+    return keys
+
+
+class ArtifactPolicy:
+    """What a store accepts: signed by one of `fingerprints`, or (not `require`d) unsigned."""
+
+    def __init__(self, fingerprints, require=False, keys=""):
+        if require and not fingerprints:
+            raise SignatureError("artifacts.signing.require needs artifacts.signing.fingerprints")
+        if not all(FINGERPRINT.match(f) for f in fingerprints):
+            raise SignatureError("artifacts.signing.fingerprints must be full 40-hex fingerprints")
+        self.fingerprints, self.require, self.keys = list(fingerprints), require, keys
+
+    @classmethod
+    def from_config(cls, config):
+        settings = signing_settings(config)
+        if not settings["fingerprints"] and not settings["require"]:
+            return None                                              # nothing to check, nothing configured
+        return cls(settings["fingerprints"], settings["require"], settings["keys"])
+
+    def check(self, name, meta_file, sig_file):
+        """Returns the signer's fingerprint, or "" for an unsigned artifact that is allowed. Raises StoreError-like
+        SignatureError otherwise (a bad signature is never tolerated, even when signatures are not required)."""
+        if sig_file is None or meta_file is None:
+            if self.require:
+                raise SignatureError(f"{name}: unsigned artifact refused (artifacts.signing.require)")
+            return ""
+        with tempfile.TemporaryDirectory(prefix="bh-sig-") as tmp:
+            keys = _trusted_keys(self.keys, self.fingerprints, tmp)
+            try:
+                return verify_gpg(meta_file, sig_file, keys, self.fingerprints)
+            except SignatureError as exc:
+                raise SignatureError(f"{name}: {exc}") from exc

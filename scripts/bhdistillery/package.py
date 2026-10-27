@@ -120,7 +120,9 @@ def build_tarball(unit, rel_paths, out_dir, arch, built_epoch=None):
         "depends": [{"package": d.name, "variant": d.variant, "recipe_sha256": d.recipe_sha256} for d in unit.depends],
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch)),
     }
-    (out_dir / f"{entry.name}.json").write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+    from .store import meta_bytes
+
+    (out_dir / f"{entry.name}.json").write_bytes(meta_bytes(meta))
     return entry, tarball, meta
 
 

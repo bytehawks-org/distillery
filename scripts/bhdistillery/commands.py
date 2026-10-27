@@ -274,6 +274,14 @@ def cmd_restore(catalog, args):
                              "is not in any store")
 
 
+def cmd_sign(catalog, args):
+    from .signature import sign_directory
+
+    written = sign_directory(args.source, catalog.config, force=args.force, log=eprint)
+    print(f"signed {len(written)} artifact(s)")
+    return 0
+
+
 def cmd_publish(catalog, args):
     source = stores_mod.DirStore(args.source)
     target = open_stores(catalog, args)

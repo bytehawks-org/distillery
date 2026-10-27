@@ -117,6 +117,23 @@ jobs:
         run: |
           python3 -m venv /opt/venv
           /opt/venv/bin/pip install -r scripts/requirements.txt
+      - name: Signing key
+        # optional: without the secret the artifacts are simply not signed (forks, pull requests)
+        env:
+          BH_SIGNING_PRIVATE_KEY: ${{ secrets.BH_SIGNING_PRIVATE_KEY }}
+          BH_SIGNING_PASSPHRASE: ${{ secrets.BH_SIGNING_PASSPHRASE }}
+        run: |
+          [ -n "${BH_SIGNING_PRIVATE_KEY:-}" ] || { echo "no signing key configured: artifacts will not be signed"; exit 0; }
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          install -d -m 700 "$GNUPGHOME"
+          printf '%s\n' "$BH_SIGNING_PRIVATE_KEY" | gpg --batch --quiet --import
+          printf '%s' "${BH_SIGNING_PASSPHRASE:-}" > "${RUNNER_TEMP}/gpg-pass"
+          chmod 600 "${RUNNER_TEMP}/gpg-pass"
+          fingerprint="$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^fpr/{print $10; exit}')"
+          { echo "GNUPGHOME=$GNUPGHOME"
+            echo "BH_SIGNING_KEY=${{ vars.BH_SIGNING_KEY }}"
+            echo "BH_SIGNING_PASSPHRASE_FILE=${RUNNER_TEMP}/gpg-pass"; } >> "$GITHUB_ENV"
+          [ -n "${{ vars.BH_SIGNING_KEY }}" ] || echo "BH_SIGNING_KEY=$fingerprint" >> "$GITHUB_ENV"
       - name: Build ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -129,6 +146,9 @@ jobs:
             --kind library $force --artifacts-dir dist
       - name: Verify the installed files
         run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --tag library
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/gnupg" "${RUNNER_TEMP}/gpg-pass"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -159,6 +179,23 @@ jobs:
         run: |
           python3 -m venv /opt/venv
           /opt/venv/bin/pip install -r scripts/requirements.txt
+      - name: Signing key
+        # optional: without the secret the artifacts are simply not signed (forks, pull requests)
+        env:
+          BH_SIGNING_PRIVATE_KEY: ${{ secrets.BH_SIGNING_PRIVATE_KEY }}
+          BH_SIGNING_PASSPHRASE: ${{ secrets.BH_SIGNING_PASSPHRASE }}
+        run: |
+          [ -n "${BH_SIGNING_PRIVATE_KEY:-}" ] || { echo "no signing key configured: artifacts will not be signed"; exit 0; }
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          install -d -m 700 "$GNUPGHOME"
+          printf '%s\n' "$BH_SIGNING_PRIVATE_KEY" | gpg --batch --quiet --import
+          printf '%s' "${BH_SIGNING_PASSPHRASE:-}" > "${RUNNER_TEMP}/gpg-pass"
+          chmod 600 "${RUNNER_TEMP}/gpg-pass"
+          fingerprint="$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^fpr/{print $10; exit}')"
+          { echo "GNUPGHOME=$GNUPGHOME"
+            echo "BH_SIGNING_KEY=${{ vars.BH_SIGNING_KEY }}"
+            echo "BH_SIGNING_PASSPHRASE_FILE=${RUNNER_TEMP}/gpg-pass"; } >> "$GITHUB_ENV"
+          [ -n "${{ vars.BH_SIGNING_KEY }}" ] || echo "BH_SIGNING_KEY=$fingerprint" >> "$GITHUB_ENV"
       - name: Build ${{ matrix.package }} ${{ matrix.version }} (${{ matrix.variant }})
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -171,6 +208,9 @@ jobs:
             --kind application $force --artifacts-dir dist
       - name: Verify the installed files (application and its dependencies)
         run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --with-deps
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/gnupg" "${RUNNER_TEMP}/gpg-pass"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

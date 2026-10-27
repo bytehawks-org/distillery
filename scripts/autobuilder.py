@@ -124,6 +124,10 @@ def make_parser():
     stores(p_pub)
     p_pub.add_argument("--from", dest="source", required=True, metavar="DIR", help="directory written by --artifacts-dir")
     p_pub.add_argument("--ignore-unsupported", action="store_true", help="do not fail on stores that cannot be published to from a script (github)")
+    p_sign = sub.add_parser("sign", help="sign the artifacts of a directory that have no signature yet")
+    common(p_sign, package=False)
+    p_sign.add_argument("--from", dest="source", required=True, metavar="DIR", help="directory written by --artifacts-dir")
+    p_sign.add_argument("--force", action="store_true", help="sign again artifacts that already have a signature")
     return parser
 
 
@@ -137,7 +141,7 @@ def load_catalog(args):
 COMMANDS = {
     "list": commands.cmd_list, "plan": commands.cmd_plan, "build": commands.cmd_build,
     "bundle": commands.cmd_bundle, "checksum": commands.cmd_checksum, "outdated": commands.cmd_outdated,
-    "bump": commands.cmd_bump, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
+    "bump": commands.cmd_bump, "sign": commands.cmd_sign, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
     "affected": commands.cmd_affected, "chain": commands.cmd_chain, "restore": commands.cmd_restore,
     "publish": commands.cmd_publish, "verify": commands.cmd_verify,
 }

@@ -16,6 +16,12 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 - **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
   `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
 - **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **Signed artifacts.** `artifacts.signing` (`key`, `fingerprints`, `keys`, `require`): a detached OpenPGP signature of the
+  artifact sidecar (`<name>.json.asc`), made by `build --artifacts-dir` when a key is configured (`BH_SIGNING_KEY`, passphrase via
+  `BH_SIGNING_PASSPHRASE_FILE`) or later with the new `sign --from DIR`; carried by the dir, GitHub and Nexus stores; verified by
+  `restore`/`chain` against pinned primary fingerprints (`require: true` refuses unsigned and foreign artifacts; a bad signature
+  is never tolerated). Same path for a local keyring and for CI (key imported from the `BH_SIGNING_PRIVATE_KEY` secret by
+  `build.yml`). Sidecars are now written by a single function (`meta_bytes`) so published copies keep verifying.
 - **GPG verification of sources** (`signature:` block, module `signature.py`): pinned signer fingerprints,
   keys fetched into a throw-away keyring, checked before extraction in `build` and before pinning in `bump`.
   Enabled for `nifi` (Apache KEYS) and `temurin` (Adoptium key); verified on the real releases.

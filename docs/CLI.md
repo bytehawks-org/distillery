@@ -113,6 +113,10 @@ Lists the artifacts held by the stores (name, size, creation, expiry, store).
 ### `restore --package P [--variant V] [--tag T] [--with-deps] [--force] [--store S]...`
 Installs a unit from the stores without compiling; refuses a unit not found, an unsafe tarball, a hash mismatch or another recipe.
 
+### `sign --from DIR [--force]`
+Signs (`<name>.json.asc`, key from `artifacts.signing.key` or `BH_SIGNING_KEY`) every artifact of `DIR` that has no
+signature yet; `--force` signs again. See [ARTIFACTS](ARTIFACTS.md#signatures).
+
 ### `publish --from DIR [--store S]... [--ignore-unsupported]`
 Pushes the artifacts of `DIR` to the stores that do not have them yet (idempotent). `github` cannot be published to from a script.
 

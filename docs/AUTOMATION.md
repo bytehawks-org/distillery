@@ -75,6 +75,15 @@ does not fire `pull_request`). `watch-upstream` therefore calls `gh workflow run
 (`workflow_dispatch` is exempt from that rule). With `BH_BOT_TOKEN` the PR triggers work as for a human and
 the dispatch is redundant but harmless (the second `build` finds everything present).
 
+### Signing artifacts in CI (optional)
+
+Add the repository secrets `BH_SIGNING_PRIVATE_KEY` (armored export of a dedicated signing subkey,
+`gpg --armor --export-secret-subkeys <fpr>`) and, if protected, `BH_SIGNING_PASSPHRASE`; optionally the variable
+`BH_SIGNING_KEY` (otherwise the imported key is used). The `libs` and `apps` jobs import it into a throw-away
+`GNUPGHOME`, sign every artifact they pack and remove the key before uploading. Without the secret nothing is signed (forks,
+pull requests). Put the **primary** fingerprint in `artifacts.signing.fingerprints` of `config.yaml` (and `require: true`
+once every producer signs) so the next jobs and your consumers verify what they restore.
+
 ## Operating it
 
 | I want to... | Do |

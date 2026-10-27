@@ -112,6 +112,7 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     if artifacts_dir:
         entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["arch"])
         log(f"[pack] {tarball} ({meta['size']} bytes, sha256 {meta['sha256'][:12]})")
+        signature.sign_artifact(tarball.with_suffix("").with_suffix(".json"), cfg, log)
     return "built"
 
 
@@ -126,6 +127,8 @@ def restore_unit(unit, stores, work_dir, log=print):
             continue
         log(f"[restore] {unit.name} {wanted.version} from {entry.store} ({entry.name})")
         tarball, meta = store.fetch(entry, work_dir)
+        if entry.signer:
+            log(f"[verify] {entry.name} signed by {entry.signer}")
         artifact.restore(tarball, unit.context["config"]["root"], expected_recipe=unit.recipe_sha256, log=log)
         return entry
     return None

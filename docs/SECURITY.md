@@ -38,6 +38,13 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
 * The SHA-256 proves "same bytes as when the maintainer pinned them", not "upstream is honest":
   declare `signature:` (OpenPGP, pinned signer fingerprints) so `build` and `bump` check it. `checksum` only prints the value; packages without `signature:` (openssl, nginx, zlib, pcre2) are still integrity-only.
 
+## Signed artifacts
+
+`artifacts.signing` signs the sidecar of every artifact and makes `restore`/`chain` accept only pinned signers
+(`require: true`). It authenticates *who built it* and detects tampering in a store; it does not vouch for the sources
+(see `signature:`). Keep the signing key in a secret store (CI) or a hardware token (workstation); a leaked key is revoked
+by removing its fingerprint from the consumers' config.
+
 ## Not covered yet
 
 Source signatures other than OpenPGP (minisign/cosign) and for the older packages · SBOM export (CycloneDX/SPDX) · vulnerability
