@@ -16,6 +16,11 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 - **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
   `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
 - **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **Native packages.** `package` writes deb, rpm and apk of a built unit with nfpm: file list from `files.sha256`, exact-version
+  dependencies in each format's syntax, conflicts between variants, optional post-install running `shaker install`, optional package
+  signing, `SHA256SUMS`. Package and file names are templates in `config.yaml` (`packaging.name_template`, `file_name_template`,
+  `release`) with per-format architecture names. See docs/PACKAGING.md. Real nfpm output not yet validated in this repository
+  (tests use a stand-in and run the real binary only when it is installed).
 - **Signed artifacts.** `artifacts.signing` (`key`, `fingerprints`, `keys`, `require`): a detached OpenPGP signature of the
   artifact sidecar (`<name>.json.asc`), made by `build --artifacts-dir` when a key is configured (`BH_SIGNING_KEY`, passphrase via
   `BH_SIGNING_PASSPHRASE_FILE`) or later with the new `sign --from DIR`; carried by the dir, GitHub and Nexus stores; verified by

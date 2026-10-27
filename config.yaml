@@ -30,3 +30,26 @@ config:
         url: https://nexus.example.com        # or NEXUS_URL; credentials: NEXUS_USER / NEXUS_PASSWORD
         repository: bytehawks
         prefix: bytehawks
+
+  # Native packages (`autobuilder.py package`, needs nfpm): see docs/PACKAGING.md.
+  packaging:
+    formats: [deb, rpm, apk]
+    release: 1                                       # package revision: deb -N, rpm release, apk -rN
+    # How packages are named. Variables: name, variant, variant_suffix ("" for the default variant), tag, arch, version,
+    # major_version, recipe12, release; in file names also pkg_name, pkg_version, pkg_arch (the format's own arch), format.
+    name_template: "bytehawks-{{ name }}{{ variant_suffix }}"
+    file_name_template:
+      deb: "{{ pkg_name }}_{{ pkg_version }}-{{ release }}_{{ pkg_arch }}.deb"
+      rpm: "{{ pkg_name }}-{{ pkg_version }}-{{ release }}.{{ pkg_arch }}.rpm"
+      apk: "{{ pkg_name }}-{{ pkg_version }}-r{{ release }}.apk"
+    maintainer: "ByteHawks <packages@example.com>"
+    vendor: ByteHawks
+    section: misc
+    # nfpm: /usr/local/bin/nfpm                      # default: BH_NFPM, then PATH
+    shaker:
+      post_install: true                             # run `shaker install <pkg>` after installation when Shaker is present
+      shaker_path: /opt/bytehawks/core/shaker/bin/shaker
+    # signing:                                       # passphrase: NFPM_PASSPHRASE
+    #   deb: {key_file: /path/to/private.asc, key_id: ABCD1234}
+    #   rpm: {key_file: /path/to/private.asc}
+    #   apk: {key_file: /path/to/rsa-private.pem, key_name: bytehawks@example.com}

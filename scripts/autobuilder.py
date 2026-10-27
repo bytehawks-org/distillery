@@ -21,6 +21,7 @@ from bhdistillery.model import (DISTILLERY_HOME, Catalog, ModelError,          #
                                  apply_root, load_yaml)
 from bhdistillery.package import PackageError                                  # noqa: E402
 from bhdistillery.store import StoreError                                      # noqa: E402
+from bhdistillery.packaging import PackagingError                              # noqa: E402
 from bhdistillery.templates import TemplateError                               # noqa: E402
 from bhdistillery.upstream import UpstreamError                                # noqa: E402
 
@@ -124,6 +125,14 @@ def make_parser():
     stores(p_pub)
     p_pub.add_argument("--from", dest="source", required=True, metavar="DIR", help="directory written by --artifacts-dir")
     p_pub.add_argument("--ignore-unsupported", action="store_true", help="do not fail on stores that cannot be published to from a script (github)")
+    p_pkg = sub.add_parser("package", help="write deb / rpm / apk packages of a built package (needs nfpm)")
+    common(p_pkg)
+    p_pkg.add_argument("--format", metavar="LIST", help="comma separated: deb,rpm,apk (default: packaging.formats)")
+    p_pkg.add_argument("--out", default="dist/packages", metavar="DIR")
+    p_pkg.add_argument("--with-deps", action="store_true", help="also package the dependencies (needed to install it)")
+    p_pkg.add_argument("--dry-run", action="store_true", help="show names, contents and dependencies; write nothing")
+    p_pkg.add_argument("--nfpm", metavar="PATH", help="nfpm binary (default: BH_NFPM, packaging.nfpm, PATH)")
+
     p_sign = sub.add_parser("sign", help="sign the artifacts of a directory that have no signature yet")
     common(p_sign, package=False)
     p_sign.add_argument("--from", dest="source", required=True, metavar="DIR", help="directory written by --artifacts-dir")
@@ -141,7 +150,7 @@ def load_catalog(args):
 COMMANDS = {
     "list": commands.cmd_list, "plan": commands.cmd_plan, "build": commands.cmd_build,
     "bundle": commands.cmd_bundle, "checksum": commands.cmd_checksum, "outdated": commands.cmd_outdated,
-    "bump": commands.cmd_bump, "sign": commands.cmd_sign, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
+    "bump": commands.cmd_bump, "sign": commands.cmd_sign, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
     "affected": commands.cmd_affected, "chain": commands.cmd_chain, "restore": commands.cmd_restore,
     "publish": commands.cmd_publish, "verify": commands.cmd_verify,
 }
@@ -160,7 +169,7 @@ def main(argv=None):
     try:
         return COMMANDS[args.action](load_catalog(args), args) or 0
     except (ModelError, TemplateError, bundle.BundleError, fetch.FetchError, BuildError, StoreError,
-            PackageError, UpstreamError, BumpError, OSError) as exc:
+            PackageError, UpstreamError, BumpError, PackagingError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

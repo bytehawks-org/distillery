@@ -274,6 +274,24 @@ def cmd_restore(catalog, args):
                              "is not in any store")
 
 
+def cmd_package(catalog, args):
+    from . import packaging
+
+    conf = packaging.settings(catalog.config)
+    formats = [f for f in (args.format or ",".join(conf["formats"])).replace(" ", "").split(",") if f]
+    bad = [f for f in formats if f not in packaging.FORMATS]
+    if bad:
+        raise packaging.PackagingError(f"unknown format(s): {', '.join(bad)} (use {', '.join(packaging.FORMATS)})")
+    unit = catalog.unit(args.package, args.variant, args.tag)
+    if catalog.config["config"]["root"] != "/opt/bytehawks":
+        eprint(f"warning: built under {catalog.config['config']['root']}: the packages install to exactly these paths "
+               "(build with the default root for packages meant for /opt/bytehawks)")
+    written = packaging.build_packages(catalog, unit, formats, args.out, conf, dry_run=args.dry_run,
+                                       with_deps=args.with_deps, nfpm=args.nfpm, log=eprint)
+    print(f"{'planned' if args.dry_run else 'wrote'} {len(written)} package(s) in {args.out}")
+    return 0
+
+
 def cmd_sign(catalog, args):
     from .signature import sign_directory
 

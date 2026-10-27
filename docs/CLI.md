@@ -113,6 +113,11 @@ Lists the artifacts held by the stores (name, size, creation, expiry, store).
 ### `restore --package P [--variant V] [--tag T] [--with-deps] [--force] [--store S]...`
 Installs a unit from the stores without compiling; refuses a unit not found, an unsafe tarball, a hash mismatch or another recipe.
 
+### `package --package P [--variant V] [--tag T] [--format deb,rpm,apk] [--out DIR] [--with-deps] [--dry-run] [--nfpm PATH]`
+Writes native packages of a **built** unit (`build` or `restore` first) into `--out` (default `dist/packages`) plus `SHA256SUMS`.
+Names, release and metadata come from `packaging:` in `config.yaml`; see [PACKAGING](PACKAGING.md). `--with-deps` also packages
+the dependencies. `--dry-run` prints names, file counts and dependencies without nfpm.
+
 ### `sign --from DIR [--force]`
 Signs (`<name>.json.asc`, key from `artifacts.signing.key` or `BH_SIGNING_KEY`) every artifact of `DIR` that has no
 signature yet; `--force` signs again. See [ARTIFACTS](ARTIFACTS.md#signatures).
