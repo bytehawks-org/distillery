@@ -97,6 +97,9 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     fetch.extract(tarball, unit.src_dir, strip_components=unit.package.get("strip_components", 1))
 
     Path(unit.prefix).mkdir(parents=True, exist_ok=True)
+    if unit.tag == "application" and any(Path(unit.prefix).iterdir()):
+        log(f"warning: {unit.prefix} is not empty: files this build leaves unchanged are not recorded in the artifact, "
+            "the file list and the packages - build into a clean root")
     before = artifact.snapshot(unit.prefix)
     log_file = Path(cfg["log_path"]) / f"{unit.name}-{unit.variant_data['full_version']}.log"
     started = time.time()

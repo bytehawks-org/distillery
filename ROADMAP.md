@@ -79,7 +79,7 @@ matching change in the bundle schema / Shaker.
 | Item | Detail |
 |---|---|
 | ⬜ `image` | generate a multi-stage Dockerfile / OCI image: builder stage, runtime stage (distroless/slim) with Shaker as ENTRYPOINT, labels from the manifest (version, recipe, source hashes) |
-| 🚧 `package` | ✅ deb / rpm / apk via nfpm from `files.sha256`, naming templates, exact dependencies, conflicts, Shaker post-install, package signing; ⬜ validated with the real nfpm and installed on Debian/Fedora/Alpine, ⬜ repository metadata (apt/createrepo/APKINDEX), ⬜ musl units for Alpine, ⬜ nfpm as a catalog unit |
+| 🚧 `package` | ✅ deb / rpm / apk via nfpm from `files.sha256`, naming templates, exact dependencies, conflicts, Shaker post-install, package signing; ✅ real nfpm 2.48 (catalog unit): deb extracted and `java` run, rpm headers and apk `.PKGINFO` checked, NiFi chain (803 MB deb, exact `Depends`, postinst) ; ⬜ installed with dpkg/rpm/apk on real hosts, ⬜ repository metadata (apt/createrepo/APKINDEX), ⬜ musl units for Alpine, ✅ nfpm as a catalog unit (`build --package nfpm`) |
 | ⬜ `k8s` | Helm/Kustomize skeleton from `rosetta.map` and `runtime.spec` (**contract**) |
 | ⬜ Release manifest | one signed index of all bundles/versions of a release, consumed by Shaker for multi-package `up` |
 | ⬜ `docs <pkg>` | generate the parameter reference page from `runtime.env` |

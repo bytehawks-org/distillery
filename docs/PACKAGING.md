@@ -69,11 +69,14 @@ protect the Distillery stores.
 
 ## nfpm
 
-`package` looks for `--nfpm`, `BH_NFPM`, `packaging.nfpm`, then `PATH`. Install a pinned release from
-<https://github.com/goreleaser/nfpm/releases> and verify it against the published `checksums.txt`.
+`package` looks for `--nfpm`, `BH_NFPM`, `packaging.nfpm`, then `PATH`. The catalog has it as a unit:
+`autobuilder.py build --package nfpm` installs the pinned, checksum-verified release in `/opt/bytehawks/nfpm/bin/nfpm`, which is found
+automatically under the build root.
 
 ## Limits
 
+* **Build into a clean root.** The file list is what the build *changed*; rebuilding an application over an existing prefix
+  records only the files that differ (Distillery warns). CI containers are clean; locally remove the prefix first.
 * Build with the default root. A unit built with `--root /x` has `/x` baked into its configuration and RPATHs; `package` warns, and
   the package installs to exactly those paths.
 * The package does not declare a dependency on the C library: build on the **oldest** distribution you intend to support

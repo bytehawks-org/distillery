@@ -19,8 +19,10 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 - **Native packages.** `package` writes deb, rpm and apk of a built unit with nfpm: file list from `files.sha256`, exact-version
   dependencies in each format's syntax, conflicts between variants, optional post-install running `shaker install`, optional package
   signing, `SHA256SUMS`. Package and file names are templates in `config.yaml` (`packaging.name_template`, `file_name_template`,
-  `release`) with per-format architecture names. See docs/PACKAGING.md. Real nfpm output not yet validated in this repository
-  (tests use a stand-in and run the real binary only when it is installed).
+  `release`) with per-format architecture names. See docs/PACKAGING.md. `nfpm` 2.48.0 is a catalog unit (`build --package nfpm`, sha256 per arch); output checked with the real binary
+  (deb unpacked and run, rpm and apk metadata read). Unit tests use a stand-in and run the real binary only when it is installed.
+- Warning when an application is built into a non-empty prefix (unchanged files are not recorded in artifacts and packages);
+  `license` added to the catalog entries.
 - **Signed artifacts.** `artifacts.signing` (`key`, `fingerprints`, `keys`, `require`): a detached OpenPGP signature of the
   artifact sidecar (`<name>.json.asc`), made by `build --artifacts-dir` when a key is configured (`BH_SIGNING_KEY`, passphrase via
   `BH_SIGNING_PASSPHRASE_FILE`) or later with the new `sign --from DIR`; carried by the dir, GitHub and Nexus stores; verified by
