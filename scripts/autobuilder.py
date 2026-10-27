@@ -131,7 +131,7 @@ def load_catalog(args):
     config = load_yaml(args.config)
     if args.root:
         config = apply_root(config, args.root)
-    return Catalog(config, load_yaml(args.packages), getattr(args, "jobs", None), getattr(args, "arch", None))
+    return Catalog(config, load_yaml(args.packages), getattr(args, "jobs", None), getattr(args, "arch", None), getattr(args, "assets", None))
 
 
 COMMANDS = {

@@ -16,6 +16,9 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 - **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
   `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
 - **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **Assets in the recipe hash.** The content (and execute bit) of `assets/<package>/` is part of the recipe hash:
+  editing a template or hook makes the unit stale. Packages without assets keep their hash; `nginx` has assets,
+  so its hash changes once. `Catalog(..., assets_root=)`, `--assets` on every command.
 - **`bump` cross-check with sha512.** `checksum_url_template` may point to a sha256 or a sha512 file (Apache
   publishes sha512 only); the pin stays sha256.
 

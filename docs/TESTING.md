@@ -2,7 +2,7 @@
 
 ```sh
 pip install -r scripts/requirements.txt
-cd tests && python3 -m unittest discover -v        # 69 tests, ~3 s, no network, no root (needs git)
+cd tests && python3 -m unittest discover -v        # 70 tests, ~3 s, no network, no root (needs git)
 python3 -W error::ResourceWarning -m unittest discover   # also checks for leaked file handles
 ```
 

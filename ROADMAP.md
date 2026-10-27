@@ -25,7 +25,7 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| ⬜ Assets in the recipe hash | `assets/<pkg>/` (templates, hooks) is not hashed: changing a hook does not make the unit stale; `bundle` re-emits it, `build` does not |
+| ✅ Assets in the recipe hash | `assets/<pkg>/` (templates, hooks) is hashed: a hook change makes the unit stale and rebuilds it |
 | ⬜ Per-arch URL/checksum | `temurin` hard-codes `x64`; needs `{{ arch }}` mapping (amd64→x64, arm64→aarch64) and one sha256 per arch |
 | ⬜ `temurin` follows upstream | no `upstream:` block: build number (`variant.build`) is not updated by `bump`; tags are `jdk-21.0.9+10` |
 | ⬜ GPG signature | Apache publishes `.asc` next to the zip; verify before trusting the sha512 fetched from the same host |

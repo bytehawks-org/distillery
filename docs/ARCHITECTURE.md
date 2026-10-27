@@ -34,7 +34,7 @@ and the moment (parameters, secrets, users, volumes, process, health).
 ```
 Unit(name, variant, tag)
   1. context      name, versions, prefix (by tag), src_dir, deps_prefix, jobs, git.* resolved
-  2. recipe hash  sha256(schema, resolved recipe, variant, tag, prefix, dependency hashes)
+  2. recipe hash  sha256(schema, resolved recipe, variant, tag, prefix, arch, assets/<pkg>/ digest, dependency hashes)
   3. skip?        bundle/manifest.json has the same recipe hash and a built_at   → [skip]
   4. fetch        cache by checksum; else download to *.part, hash while streaming, mismatch → delete + error
   5. extract      fresh src_dir; refuse traversal / escaping links; strip_components (default 1)
@@ -70,7 +70,8 @@ recipe_sha256(unit) = SHA256( json(sort_keys){
     schema: <bundle schema>,
     recipe: <package definition, templates resolved, without the variant list>,
     variant: <selected variant, including its sha256>,
-    tag, prefix,
+    tag, prefix, arch,
+    assets: <digest of assets/<package>/: path, execute bit, content; omitted when there are none>,
     depends: [recipe_sha256(dep) for dep in dependencies]      # Merkle
 })
 ```

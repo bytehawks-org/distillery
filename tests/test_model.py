@@ -57,6 +57,31 @@ class ModelTests(unittest.TestCase):
         self.assertNotEqual(h(before), h(after))
         self.assertEqual(h(before), h(catalog(pkgs(app=["lib"], lib=[]), "/r")))
 
+    def test_assets_are_part_of_the_recipe_hash(self):
+        from bhdistillery.model import Catalog, apply_root
+        with TempDir() as t:
+            hook = t / "assets" / "demo" / "hooks" / "post_init" / "10.sh"
+            hook.parent.mkdir(parents=True)
+            hook.write_text("echo one\n")
+            packages = {"package": {"demo": package("file:///x.tgz", "a" * 64), "plain": package("file:///y.tgz", "a" * 64)}}
+
+            def hashes(assets):
+                cat = Catalog(apply_root(CONFIG, "/r"), packages, jobs=1, assets_root=assets)
+                units = {n: cat.unit(n) for n in ("demo", "plain")}
+                for unit in units.values():
+                    cat.plan(unit)
+                return {n: u.recipe_sha256 for n, u in units.items()}
+
+            before, without = hashes(t / "assets"), hashes(None)
+            hook.write_text("echo two\n")
+            after = hashes(t / "assets")
+            self.assertNotEqual(before["demo"], after["demo"])               # a hook change makes the unit stale
+            self.assertNotEqual(before["demo"], without["demo"])
+            self.assertEqual(before["plain"], after["plain"])                # no assets: hash unchanged
+            self.assertEqual(without["plain"], after["plain"])
+            hook.chmod(0o755)
+            self.assertNotEqual(after["demo"], hashes(t / "assets")["demo"])     # so does the execute bit
+
     def test_hash_depends_on_prefix(self):
         h = lambda root: (lambda c: c.plan(c.unit("a", tag="library"))[-1].recipe_sha256)(catalog(pkgs(a=[]), root))
         self.assertNotEqual(h("/r1"), h("/r2"))
