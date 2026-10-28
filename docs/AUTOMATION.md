@@ -62,6 +62,9 @@ Binaries built against a glibc run on that glibc or newer, musl ones on that mus
 intend to support**. Not exercised on GitHub yet: JavaScript actions (`checkout`, `upload-artifact`) inside an Alpine container are the
 first thing to check on the first run of the musl leg.
 
+The order in which to exercise all of this for the first time, with the predicted result of each step, is in
+[FIRST-RUN](FIRST-RUN.md).
+
 ## One-time repository setup
 
 | Where | Setting |

@@ -111,6 +111,7 @@ Reference: [docs/CLI.md](docs/CLI.md).
 | [PACKAGES](docs/PACKAGES.md) | complete `packages.yaml` reference (variants, git, commands, depends_on, runtime) |
 | [CONFIG](docs/CONFIG.md) | `config.yaml`, paths, `--root` |
 | [AUTOMATION](docs/AUTOMATION.md) | the scheduled workflows: watch upstream, rebuild what is affected, setup, operation |
+| [FIRST-RUN](docs/FIRST-RUN.md) | checklist for the first run of the workflows on GitHub: order, predicted results, what to do otherwise |
 | [INTEGRATION](docs/INTEGRATION.md) | Distillery + Shaker, or each alone: what Distillery emits, what Shaker checks, chain of trust, setups |
 | [PACKAGING](docs/PACKAGING.md) | deb / rpm / apk: naming templates, contents, dependencies, signing, limits |
 | [ARTIFACTS](docs/ARTIFACTS.md) | artifact format and identity, stores (dir, GitHub, Nexus), restore, integrity |

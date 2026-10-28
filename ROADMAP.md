@@ -50,7 +50,7 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| ⬜ **First real run** | execute `watch-upstream` and `build` on GitHub, fix what only the platform reveals (same-run artifact visibility, container + checkout details, PR token behaviour) |
+| ⬜ **First real run** | execute `ci`, `build` (glibc + musl legs), `watch-upstream` on GitHub, fix what only the platform reveals (same-run artifact visibility, JavaScript actions in the Alpine container, PR token behaviour): [docs/FIRST-RUN.md](docs/FIRST-RUN.md) is the checklist |
 | ⬜ Nexus on a real instance | run `publish`/`inventory`/`restore` against Nexus 3 OSS, adjust listing/pagination quirks |
 | ⬜ `prune` | remove superseded artifacts older than N days / keep last K per unit in a store; scheduled |
 | ⬜ Failure notification | open/update an issue when a scheduled build or a bump fails; weekly digest of outdated series (`newer_series`) |
