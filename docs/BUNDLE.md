@@ -49,7 +49,11 @@ BH_PKG_PREFIX=/opt/bytehawks/nginx
 BH_PKG_RECIPE=a1146e116deab35c59f801307975b40ab20b9f6da9582b0a6c7e11b12c512fa6
 BH_PKG_ARCH=amd64
 BH_PKG_LIBC=glibc
+BH_PKG_DEPENDS=openssl=eb015c52... zlib=9f1c0a77... pcre2=4c2e91d0...
 ```
+`BH_PKG_DEPENDS` (only when there are dependencies): the **direct** dependencies as `<package>=<recipe sha256>`, space separated.
+`shaker up` installs them first, in order, and refuses to go on if the installed bundle of a dependency is not the one this
+package was built against.
 `BH_PKG_ARCH` / `BH_PKG_LIBC` (`glibc` or `musl`) are where the build runs; Shaker refuses to install a bundle for another
 platform. Added after the first release of schema 1: a consumer that does not know them ignores them.
 Exported by Shaker; available to templates (`{{ BH_PKG_PREFIX }}`), hooks and the service.

@@ -21,6 +21,7 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
   them; set for NiFi's `conf/`); every build writes `bundle.sha256` over the bundle and `files.sha256` and signs it
   (`bundle.sha256.asc`) when `artifacts.signing.key` is set; the seal is part of artifacts and packages. `packaging.shaker.package` makes
   services depend on a package that provides Shaker (optional: without Shaker the post-install only prints what to run).
+  `manifest.env` lists the direct dependencies with their recipe (`BH_PKG_DEPENDS`) for `shaker up`.
 - **glibc and musl.** New platform dimension `libc` (`--libc`, `BH_LIBC`, detected from the host): part of the recipe hash and of the manifest;
   artifact identity `…--amd64--…` (glibc, names unchanged) and `…--amd64-musl--…`; `sha256` maps accept `<arch>` and `<arch>-musl` keys;
   `libc_map` / `{{ libc_name }}`, `{{ libc }}`, `{{ platform }}` in templates. Temurin is pinned for the four platforms (Alpine builds

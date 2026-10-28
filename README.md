@@ -36,7 +36,7 @@ upstream tags ──► outdated ──► bump ──► PR ──► build: st
 | **glibc and musl** | every unit builds for both C libraries (`--libc`, Debian and Alpine builder images): separate, content-addressed artifacts (`amd64` / `amd64-musl`), deb/rpm from glibc builds and apk from musl ones |
 | **Shaker, or not** | the bundle carries platform, `mutable` paths, a digest and an optional signature that [Shaker](https://github.com/bytehawks-org/shaker) checks (`verify --files`, `restore`); each tool also works without the other ([INTEGRATION](docs/INTEGRATION.md)) |
 | **Signed** | optional detached OpenPGP signature of every artifact (local key or CI secret); `restore`/`chain` accept only pinned signers; sources are verified too (`signature:` in the catalog) |
-| **Tested** | 107 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
+| **Tested** | 108 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
 
 ## Layout
 

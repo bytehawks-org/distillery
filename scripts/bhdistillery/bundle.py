@@ -171,7 +171,9 @@ def manifest_env(data):
         ("BH_PKG_NAME", data["package"]), ("BH_PKG_VERSION", data["version"]),
         ("BH_PKG_VARIANT", data["variant"]), ("BH_PKG_PREFIX", data["prefix"]),
         ("BH_PKG_RECIPE", data["recipe_sha256"]),
-        ("BH_PKG_ARCH", data.get("arch", "")), ("BH_PKG_LIBC", data.get("libc", ""))) if value != "")
+        ("BH_PKG_ARCH", data.get("arch", "")), ("BH_PKG_LIBC", data.get("libc", "")),
+        # direct dependencies, "<package>=<recipe sha256>" separated by spaces: what `shaker up` orders and checks
+        ("BH_PKG_DEPENDS", " ".join(f"{d['package']}={d['recipe_sha256']}" for d in data.get("depends", [])))) if value != "")
 
 
 def emit(unit, assets_root, out_dir=None, built=False):

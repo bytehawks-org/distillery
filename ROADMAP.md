@@ -19,7 +19,7 @@ matching change in the bundle schema / Shaker.
 | 6 | **Artifact stores** (dir, GitHub Actions artifacts, Nexus raw), `restore`, `publish`, `inventory` | ✅ dir/github (API listing verified); 🚧 Nexus tested on a fake server only |
 | 6 | **Affected-only build chain** (`stale`, `chain`, build workflow libs → apps) | ✅ code + tests; ⬜ first run on GitHub |
 | 6 | Installed-file inventory (`files.sha256`, `verify`) | ✅ (Shaker `verify --files` ✅) |
-| 7 | **Shaker integration**: platform check, `mutable`, sealed + signed bundle, `shaker restore` (docs/INTEGRATION.md) | ✅ tested with a real NiFi chain; ⬜ `shaker up` (dependency order), ⬜ Shaker as a catalog unit / package |
+| 7 | **Shaker integration**: platform check, `mutable`, sealed + signed bundle, `shaker restore` (docs/INTEGRATION.md) | ✅ tested with a real NiFi chain; ✅ `shaker up` (dependency order), ⬜ Shaker as a catalog unit / package |
 | 7 | **Binary repack** (zip sources, hook install, `variant.*`): NiFi 2.9 on Temurin 21 built and run through Shaker | ✅ (x64 only; see "Binary repack gaps") |
 
 ## Binary repack gaps (found building NiFi)

@@ -80,6 +80,7 @@ class BundleTests(unittest.TestCase):
             env = (out / "manifest.env").read_text()
             self.assertIn(f"BH_PKG_ARCH={unit.context['arch']}", env)
             self.assertIn(f"BH_PKG_LIBC={unit.context['libc']}", env)
+            self.assertNotIn("BH_PKG_DEPENDS", env)                       # no dependencies, no line
 
             (out / "files.sha256").write_text("")
             written = bundle.seal(out)                                    # no signing key configured: digest only
@@ -91,6 +92,15 @@ class BundleTests(unittest.TestCase):
             for line in lines:
                 digest, name = line.split("  ", 1)
                 self.assertEqual(hashlib.sha256((out / name).read_bytes()).hexdigest(), digest)
+
+    def test_dependencies_are_listed_in_manifest_env(self):
+        lib = package("file:///l.tgz", "a" * 64, tags=["library"])
+        app = package("file:///a.tgz", "b" * 64, depends_on=["lib"])
+        cat = catalog({"lib": lib, "app": app}, "/r")
+        unit = cat.unit("app")
+        cat.plan(unit)
+        env = bundle.manifest_env(bundle.manifest(unit))
+        self.assertIn(f"BH_PKG_DEPENDS=lib={unit.depends[0].recipe_sha256}\n", env)
 
     def test_variant_keys_are_available_to_templates(self):
         pkg = package("file:///x-{{ variant.build }}.tgz", "a" * 64)

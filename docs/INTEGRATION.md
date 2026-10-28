@@ -17,6 +17,7 @@ Distillery **builds and describes**, Shaker **installs, runs and audits**. They 
 | `runtime.spec`: `mutable\|path` (from `runtime.mutable`) | `verify --files` skips what the runtime rewrites on purpose (NiFi's `conf/`) | every file is checked |
 | `bundle.sha256` (sha256sum format) over the contract files, assets and `files.sha256` | `verify` and `install` refuse a bundle edited after the build | no check |
 | `bundle.sha256.asc` (OpenPGP, when `artifacts.signing.key` is set) | accepted only from pinned signers: `BH_SHAKER_TRUSTED_FINGERPRINTS`, `BH_SHAKER_REQUIRE_SIGNATURE=true` / `--require-signature` | unsigned bundles install unless a signature is required |
+| `manifest.env`: `BH_PKG_DEPENDS` (direct dependencies with their recipe) | `shaker up <pkg>`: sets the dependencies up first, in order, and refuses a dependency that is not the build recorded | no dependencies |
 | `files.sha256` | `verify --files`: every installed file, link and directory against the build | skipped |
 | artifact `<name>.tar.gz` + `.json` (+ `.json.asc`) | `shaker restore`: sha256, signature, platform, root and paths are checked before anything is written | — |
 | package `post-install` (deb/rpm/apk) | runs `shaker install <pkg>`; `packaging.shaker.package` can make services depend on the package that provides Shaker | prints the command to run |
@@ -44,7 +45,7 @@ BH_SIGNING_KEY=<fpr> autobuilder.py build --package nifi --with-deps --artifacts
 # 2. target host or container image: only Shaker is needed
 export BH_SHAKER_TRUSTED_FINGERPRINTS=<primary fingerprint> BH_SHAKER_REQUIRE_SIGNATURE=true
 shaker restore dist/bh--temurin--...tar.gz && shaker restore dist/bh--nifi--...tar.gz
-shaker install nifi && shaker run nifi            # parameters: BH_NIFI_PASSWORD, BH_NIFI_SENSITIVE_PROPS_KEY, ...
+shaker up nifi --run                              # temurin first, then nifi: install + init + start; parameters: BH_NIFI_PASSWORD, BH_NIFI_SENSITIVE_PROPS_KEY, ...
 shaker verify nifi --files --require-signature    # audit at any time
 
 # 3. legacy host with a package manager: deb / rpm / apk
