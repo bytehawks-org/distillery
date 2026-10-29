@@ -18,6 +18,7 @@ Output: progress and build output on stdout, errors on stderr.
 | `--assets DIR` | `<repo>/assets` | where `assets/<package>/` live |
 | `--root DIR` | from `config.yaml` | rebase every path ([CONFIG](CONFIG.md#--root)) |
 | `--arch NAME` | detected (`amd64`, `arm64`) | architecture label, part of the recipe hash and of artifact names |
+| `--linkage dynamic\|static` | `dynamic` (`BH_LINKAGE` overrides) | `static` builds the packages that define a `static:` recipe without a dynamic loader (platform `amd64-static`, `amd64-musl-static`), see [STATIC](STATIC.md) |
 | `--libc glibc\|musl` | detected (`BH_LIBC` overrides): musl when `/lib/ld-musl-*` exists | C library the units are built for; part of the recipe hash, of the artifact name (`amd64-musl`) and of the manifest |
 
 ## `list`

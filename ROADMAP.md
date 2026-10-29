@@ -95,7 +95,7 @@ matching change in the bundle schema / Shaker.
 | nifi 2.9.0 on temurin 21.0.9 | ✅ built, signed sources, run through Shaker |
 | valkey 9.1.3 (git source, TLS), prometheus 3.15.1 (release asset), mosquitto 2.1.2 (git source, with cjson 1.7.19) | ✅ built, run through Shaker (parameters and templates from `scaffold`), `verify --files` ok; glibc only so far |
 | postgresql, haproxy, mariadb, php-fpm, nodejs, python | ⬜ candidates. postgresql from git needs flex (not on the build host); haproxy's configuration is a DSL `scaffold` cannot read |
-| musl toolchain / fully static variants | ⬜ idea for scratch/distroless images |
+| fully static variants | 🚧 `--linkage static`: ✅ glibc (nginx, valkey without Lua, mosquitto built and run), ⬜ musl static compilation, ⬜ Shaker accepting a static musl bundle on a glibc host, ⬜ `image` from static artifacts (scratch/distroless) |
 
 ## 1.0 criteria
 

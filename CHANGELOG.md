@@ -6,6 +6,10 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 ## [Unreleased]
 
 ### Added
+- **Static linking.** `--linkage static` / `BH_LINKAGE`: packages with a `static:` recipe (commands/env overrides, `binaries`) are built
+  without a dynamic loader; platform `amd64-static` / `amd64-musl-static`, `linkage` in the recipe hash (dynamic hashes unchanged), manifest,
+  `manifest.env` and sidecar; an ELF check fails a build whose declared binaries are still dynamic. nginx, valkey (without Lua: its engine
+  needs `dlsym`) and mosquitto have a static recipe; built and run on glibc. See `docs/STATIC.md`.
 - **Binary repack: NiFi on Temurin.** `nifi` 2.9.0 (Apache `bin.zip`, nothing compiled) and `temurin` 21.0.9
   (JRE tarball, x64 only) in the catalog; the pair was built with `--root`, then installed, initialized, started
   and verified through Shaker (UI 200, login, REST API, `verify` 10/10). Runtime: `BH_NIFI_*` parameters

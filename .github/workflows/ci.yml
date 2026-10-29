@@ -30,6 +30,7 @@ jobs:
                 plan="$(python scripts/autobuilder.py plan --package "$p" --tag "$tag" --root /tmp/stage --arch $arch --libc $libc)"
                 echo "== $p $arch/$libc"; echo "$plan"
                 if echo "$plan" | grep -q MISSING; then echo "::error::$p has an unpinned source for $arch/$libc"; exit 1; fi
+                python scripts/autobuilder.py plan --package "$p" --tag "$tag" --root /tmp/stage --arch $arch --libc $libc --linkage static > /dev/null
               done
             done
           done

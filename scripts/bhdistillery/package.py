@@ -112,7 +112,7 @@ def build_tarball(unit, rel_paths, out_dir, platform, built_epoch=None):
         "schema": META_SCHEMA,
         "generator": f"distillery/{__version__}",
         "name": entry.name,
-        "package": unit.name, "variant": unit.variant, "tag": unit.tag, "arch": unit.context["arch"], "libc": unit.context["libc"], "platform": platform,
+        "package": unit.name, "variant": unit.variant, "tag": unit.tag, "arch": unit.context["arch"], "libc": unit.context["libc"], "linkage": unit.context["linkage"], "platform": platform,
         "version": entry.version, "recipe_sha256": unit.recipe_sha256,
         "root": str(root), "prefix": str(prefix),
         "files": len(members),

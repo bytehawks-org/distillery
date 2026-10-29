@@ -153,6 +153,7 @@ def manifest(unit, built=False):
         "prefix": unit.prefix,
         "arch": unit.context["arch"],
         "libc": unit.context["libc"],
+        "linkage": unit.context["linkage"],
         "source": (unit.context["git"].get("release_download_url_template", "")
                    or f"{unit.context['git'].get('repo', '')}#{unit.context['git'].get('ref_template', '')}"),
         "source_sha256": unit.variant_data.get("sha256", ""),
@@ -174,6 +175,7 @@ def manifest_env(data):
         ("BH_PKG_VARIANT", data["variant"]), ("BH_PKG_PREFIX", data["prefix"]),
         ("BH_PKG_RECIPE", data["recipe_sha256"]),
         ("BH_PKG_ARCH", data.get("arch", "")), ("BH_PKG_LIBC", data.get("libc", "")),
+        ("BH_PKG_LINKAGE", data.get("linkage", "")),
         # direct dependencies, "<package>=<recipe sha256>" separated by spaces: what `shaker up` orders and checks
         ("BH_PKG_DEPENDS", " ".join(f"{d['package']}={d['recipe_sha256']}" for d in data.get("depends", [])))) if value != "")
 
