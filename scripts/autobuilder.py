@@ -21,7 +21,8 @@ from bhdistillery.model import (DISTILLERY_HOME, Catalog, ModelError,          #
                                  apply_root, load_yaml)
 from bhdistillery.package import PackageError                                  # noqa: E402
 from bhdistillery.store import StoreError                                      # noqa: E402
-from bhdistillery.packaging import PackagingError                              # noqa: E402
+from bhdistillery.packaging import PackagingError
+from bhdistillery.scaffold import ScaffoldError                              # noqa: E402
 from bhdistillery.templates import TemplateError                               # noqa: E402
 from bhdistillery.upstream import UpstreamError                                # noqa: E402
 
@@ -134,6 +135,23 @@ def make_parser():
     p_pkg.add_argument("--dry-run", action="store_true", help="show names, contents and dependencies; write nothing")
     p_pkg.add_argument("--nfpm", metavar="PATH", help="nfpm binary (default: BH_NFPM, packaging.nfpm, PATH)")
 
+    p_sc = sub.add_parser("scaffold", help="derive runtime.env entries and a template from the configuration file an application ships")
+    common(p_sc, package=False)
+    p_sc.add_argument("--package", required=True, help="package the parameters belong to (names become BH_<PACKAGE>_<KEY>)")
+    p_sc.add_argument("--from", dest="source", required=True, metavar="FILE", help="the application's sample / default configuration file")
+    p_sc.add_argument("--format", choices=["space", "equals", "ini", "yaml"], help="default: detected (key value | key = value | [sections] | yaml)")
+    p_sc.add_argument("--commented", choices=["no", "strict", "loose"], default="no",
+                      help="also take settings documented as comments: strict = '#key = value' (no space after #), loose = '# key value' (prose can match)")
+    p_sc.add_argument("--include", metavar="REGEX", help="only settings whose key (or section.key) matches")
+    p_sc.add_argument("--exclude", metavar="REGEX", help="leave out settings that match")
+    p_sc.add_argument("--max", type=int, help="at most N settings")
+    p_sc.add_argument("--hint", action="append", metavar="KEY=TYPE", help="override an inferred type, e.g. loglevel=enum:debug,notice,warning")
+    p_sc.add_argument("--list", action="store_true", help="show the proposed parameters and stop")
+    p_sc.add_argument("--write", action="store_true", help="add the entries to packages.yaml, write assets/<package>/<name>.tmpl and register it")
+    p_sc.add_argument("--template", metavar="NAME", help="template file name (default <file>.tmpl)")
+    p_sc.add_argument("--dest", metavar="PATH", help="where Shaker renders it (default {{ prefix }}/conf/<file>)")
+    p_sc.add_argument("--mode", default="0640")
+
     p_sign = sub.add_parser("sign", help="sign the artifacts of a directory that have no signature yet")
     common(p_sign, package=False)
     p_sign.add_argument("--from", dest="source", required=True, metavar="DIR", help="directory written by --artifacts-dir")
@@ -152,7 +170,7 @@ def load_catalog(args):
 COMMANDS = {
     "list": commands.cmd_list, "plan": commands.cmd_plan, "build": commands.cmd_build,
     "bundle": commands.cmd_bundle, "checksum": commands.cmd_checksum, "outdated": commands.cmd_outdated,
-    "bump": commands.cmd_bump, "sign": commands.cmd_sign, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
+    "bump": commands.cmd_bump, "sign": commands.cmd_sign, "scaffold": commands.cmd_scaffold, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
     "affected": commands.cmd_affected, "chain": commands.cmd_chain, "restore": commands.cmd_restore,
     "publish": commands.cmd_publish, "verify": commands.cmd_verify,
 }
@@ -171,7 +189,7 @@ def main(argv=None):
     try:
         return COMMANDS[args.action](load_catalog(args), args) or 0
     except (ModelError, TemplateError, bundle.BundleError, fetch.FetchError, BuildError, StoreError,
-            PackageError, UpstreamError, BumpError, PackagingError, OSError) as exc:
+            PackageError, UpstreamError, BumpError, PackagingError, ScaffoldError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

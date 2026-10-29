@@ -153,8 +153,10 @@ def manifest(unit, built=False):
         "prefix": unit.prefix,
         "arch": unit.context["arch"],
         "libc": unit.context["libc"],
-        "source": unit.context["git"].get("release_download_url_template", ""),
+        "source": (unit.context["git"].get("release_download_url_template", "")
+                   or f"{unit.context['git'].get('repo', '')}#{unit.context['git'].get('ref_template', '')}"),
         "source_sha256": unit.variant_data.get("sha256", ""),
+        "source_commit": unit.variant_data.get("commit", ""),
         "recipe_sha256": unit.recipe_sha256,
         "depends": [{"package": d.name, "variant": d.variant, "version": str(d.variant_data["full_version"]),
                      "recipe_sha256": d.recipe_sha256} for d in unit.depends],

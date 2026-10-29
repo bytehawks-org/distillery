@@ -6,7 +6,7 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 from . import fetch, signature
-from .templates import resolve_template
+from .templates import resolve_dict_templates, resolve_template
 from .upstream import in_series, variant_track
 
 
@@ -46,8 +46,18 @@ def _quiet(log):
     return lambda message: None if message.startswith("WARNING unverified") else log(message)
 
 
+def git_pin(unit, new_version):
+    """For a git source: (`<repo> <ref>`, commit) of the new version, resolved on the remote without cloning."""
+    context = {**unit.context, "full_version": new_version}
+    git = resolve_dict_templates(unit.package.get("git", {}), context)
+    return f"{git['repo']} {git['ref_template']}", fetch.git_commit_of(git["repo"], git["ref_template"])
+
+
 def fetch_checksum(unit, new_version, log=print):
-    """SHA-256 of the new tarball, cross-checked against the upstream-published checksum if declared."""
+    """SHA-256 of the new tarball, cross-checked against the upstream-published checksum if declared.
+    For a git source the pin is the commit of the new tag and nothing is downloaded."""
+    if unit.package.get("git", {}).get("ref_template"):
+        return git_pin(unit, new_version)
     url = source_url(unit, new_version)
     log = _quiet(log)
     with tempfile.TemporaryDirectory() as tmp:
@@ -73,9 +83,10 @@ def fetch_checksum(unit, new_version, log=print):
     return url, digest
 
 
-def apply_bump(packages_file, package, variant_name, new_version, sha256):
+def apply_bump(packages_file, package, variant_name, new_version, sha256, key="sha256"):
     """Rewrite one variant in place. Returns the (old, new) full_version.
-    `sha256` is a string, or a {arch: sha256} map for variants pinned per architecture."""
+    `sha256` is a string, or a {arch: sha256} map for variants pinned per architecture; for a git source it is the
+    commit and `key` is "commit"."""
     yaml = _yaml()
     path = Path(packages_file)
     data = yaml.load(path.read_text())
@@ -88,7 +99,7 @@ def apply_bump(packages_file, package, variant_name, new_version, sha256):
             values = new_variant_values(variant, new_version)
             variant["patch_version"] = values["patch_version"]
             variant["full_version"] = new_version
-            variant["sha256"] = sha256
+            variant[key] = sha256                       # "sha256" for tarballs, "commit" for git sources
             with open(path, "w") as handle:
                 yaml.dump(data, handle)
             return old, new_version
