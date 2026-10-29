@@ -152,6 +152,28 @@ package:
           --with-ld-opt="-L{{ deps_prefix }}/lib"
       make: make -j{{ jobs }}
       install: make install
+    # `--linkage static`: no dynamic loader. On musl this is a clean fully static binary; on glibc it still needs the same
+    # glibc at run time for NSS (the `user` directive and the resolver call getpwnam/getaddrinfo, see docs/STATIC.md).
+    static:
+      binaries: [sbin/nginx]
+      commands:
+        configure: |
+          ./configure \
+            --prefix={{ prefix }} \
+            --conf-path={{ prefix }}/conf/nginx.conf \
+            --error-log-path=stderr \
+            --http-log-path=/dev/stdout \
+            --pid-path={{ prefix }}/run/nginx.pid \
+            --http-client-body-temp-path={{ prefix }}/run/client_body \
+            --http-proxy-temp-path={{ prefix }}/run/proxy \
+            --http-fastcgi-temp-path={{ prefix }}/run/fastcgi \
+            --http-uwsgi-temp-path={{ prefix }}/run/uwsgi \
+            --http-scgi-temp-path={{ prefix }}/run/scgi \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_stub_status_module \
+            --with-cc-opt="-I{{ deps_prefix }}/include" \
+            --with-ld-opt="-L{{ deps_prefix }}/lib -static -ldl -lpthread"
     runtime:
       user:
         name: nginx
@@ -426,6 +448,12 @@ package:
     commands:
       make: make -j{{ jobs }} BUILD_TLS=yes OPENSSL_PREFIX={{ deps_prefix }} USE_SYSTEMD=no
       install: make PREFIX={{ prefix }} install
+    # The Lua engine is a "static module" the server finds with dlopen(NULL)/dlsym(), which a statically linked executable
+    # cannot do (it aborts at start): a static valkey is built without Lua, i.e. without EVAL/FUNCTION.
+    static:
+      binaries: [bin/valkey-server, bin/valkey-cli, bin/valkey-benchmark]
+      commands:
+        make: make -j{{ jobs }} BUILD_TLS=yes OPENSSL_PREFIX={{ deps_prefix }} USE_SYSTEMD=no BUILD_LUA=no LDFLAGS="-static" CFLAGS="-static"
     runtime:
       user:
         name: valkey
@@ -948,6 +976,26 @@ package:
       install: |
         make install prefix={{ prefix }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no \
           LIBMOSQ_COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto'
+    # Static: libmosquitto as an archive (the clients link it), the broker and the tools without a dynamic loader. The shared
+    # objects the Makefile builds anyway (libcommon) cannot be linked with -static, so only the final links get it. Plugins
+    # are dlopen()ed objects, which a static executable cannot load.
+    static:
+      binaries: [sbin/mosquitto, bin/mosquitto_pub, bin/mosquitto_sub, bin/mosquitto_rr, bin/mosquitto_passwd]
+      commands:
+        make: |
+          OPTS="WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SHARED_LIBRARIES=no WITH_STATIC_LIBRARIES=yes"
+          COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto -ldl -pthread'
+          make -j{{ jobs }} -C libcommon $OPTS
+          make -j{{ jobs }} -C lib $OPTS
+          for d in src client apps/mosquitto_passwd; do
+            make -j{{ jobs }} -C $d $OPTS LIBMOSQ_COMMON="$COMMON" LDFLAGS="-L{{ deps_prefix }}/lib -L{{ deps_prefix }}/lib64 -static"
+          done
+        install: |
+          OPTS="WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SHARED_LIBRARIES=no WITH_STATIC_LIBRARIES=yes"
+          COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto -ldl -pthread'
+          for d in lib src client apps/mosquitto_passwd; do
+            make -C $d install prefix={{ prefix }} $OPTS LIBMOSQ_COMMON="$COMMON" LDFLAGS="-L{{ deps_prefix }}/lib -L{{ deps_prefix }}/lib64 -static"
+          done
     runtime:
       user:
         name: mosquitto

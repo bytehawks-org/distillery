@@ -87,6 +87,7 @@ def detect_arch():
 
 
 LIBCS = ("glibc", "musl")
+LINKAGES = ("dynamic", "static")
 
 
 def detect_libc():
@@ -147,7 +148,7 @@ class Unit:
 class Catalog:
     """config.yaml + packages.yaml with everything needed to resolve units."""
 
-    def __init__(self, config, packages, jobs=None, arch=None, assets_root=None, libc=None):
+    def __init__(self, config, packages, jobs=None, arch=None, assets_root=None, libc=None, linkage=None):
         self.config = config
         self.assets_root = Path(assets_root) if assets_root else None
         self.packages = packages.get("package", {})
@@ -156,6 +157,9 @@ class Catalog:
         self.libc = libc or detect_libc()
         if self.libc not in LIBCS:
             raise ModelError(f"unknown libc '{self.libc}' (use {', '.join(LIBCS)})")
+        self.linkage = linkage or os.environ.get("BH_LINKAGE") or "dynamic"
+        if self.linkage not in LINKAGES:
+            raise ModelError(f"unknown linkage '{self.linkage}' (use {', '.join(LINKAGES)})")
         # identity of the platform in artifact names: glibc keeps the plain arch, musl is "<arch>-musl"
         self.platform = self.arch if self.libc == "glibc" else f"{self.arch}-{self.libc}"
 
@@ -172,11 +176,25 @@ class Catalog:
             raise ModelError(f"invalid tag '{tag}'")
         if tag not in package.get("tags", []):
             raise ModelError(f"package '{name}' is not tagged '{tag}' (tags: {package.get('tags', [])})")
+        package, linkage = self._for_linkage(package)
         unit = Unit(name, canonical_variant(package, variant), tag, package,
                     self._variant_for_arch(select_variant(name, package, variant)))
-        unit.context = self._context(unit)
+        unit.context = self._context(unit, linkage)
         unit.assets_sha256 = assets_digest(self.assets_root, name)
         return unit
+
+    def _for_linkage(self, package):
+        """(package, linkage) as this unit is built. A package opts in to a static build with a `static:` block (commands and
+        env replacing the default ones, `binaries` that must come out without a dynamic loader); one without it has nothing
+        to link differently (libraries that only ship archives) and keeps its dynamic identity, so it is built and stored once."""
+        override = package.get("static")
+        if self.linkage != "static" or not override:
+            return {k: v for k, v in package.items() if k != "static"}, "dynamic"
+        merged = {k: v for k, v in package.items() if k != "static"}
+        for key, value in override.items():
+            merged[key] = {**merged.get(key, {}), **value} if isinstance(value, dict) else value
+        merged["static"] = {"binaries": list(override.get("binaries", []))}
+        return merged, "static"
 
     def _variant_for_arch(self, variant):
         """`sha256` may be a map when the source differs per platform. Keys: "<arch>-<libc>" (amd64-musl) or just
@@ -186,7 +204,7 @@ class Catalog:
             variant = {**variant, "sha256": pins.get(f"{self.arch}-{self.libc}", pins.get(self.arch, ""))}
         return variant
 
-    def _context(self, unit):
+    def _context(self, unit, linkage="dynamic"):
         cfg = self.config["config"]
         v = unit.variant_data
         base = {
@@ -197,7 +215,8 @@ class Catalog:
             "jobs": self.jobs,
             "arch": self.arch,
             "libc": self.libc,
-            "platform": self.platform,
+            "linkage": linkage,
+            "platform": self.platform if linkage == "dynamic" else f"{self.platform}-static",
             "libc_name": unit.package.get("libc_map", {}).get(self.libc, self.libc),     # e.g. musl -> alpine-linux
             "full_version": v["full_version"],
             "major_version": v["major_version"],
@@ -309,6 +328,8 @@ def recipe_hash(unit):
         "libc": unit.context["libc"],
         "depends": [d.recipe_sha256 for d in unit.depends],
     }
+    if unit.context["linkage"] != "dynamic":     # absent for dynamic units: their hashes do not change
+        payload["linkage"] = unit.context["linkage"]
     if unit.assets_sha256:                       # absent for packages without assets: their hashes do not change
         payload["assets"] = unit.assets_sha256
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()

@@ -111,6 +111,17 @@ that is the same on both libcs needs only the `<arch>` entries. `libc_map: {glib
 A platform without a pin is "not pinned": the build refuses. `checksum --arch arm64` prints the value to pin;
 `bump` recomputes every architecture of a map. `arch` is part of the recipe hash, so artifacts stay per architecture.
 
+## `static` - a recipe without a dynamic loader
+
+```yaml
+static:
+  binaries: [sbin/nginx]            # must come out with no PT_INTERP / DT_NEEDED, else the build fails
+  commands: { configure: ... }      # replaces the named stages
+  env: { LDFLAGS: ... }
+```
+Used only with `--linkage static`; a package without it is built once for both linkages. Details and limits (NSS, `dlopen`, valkey
+without Lua) in [STATIC](STATIC.md). `{{ linkage }}` (`dynamic`/`static`) is available in templates.
+
 ## `publish_tag`
 Which role the CI builds and stores for the package: `library` if the package can be one, else its first tag.
 Override for packages with both tags that should be published as applications.

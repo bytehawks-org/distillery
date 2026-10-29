@@ -39,6 +39,7 @@ def make_parser():
         p.add_argument("--root", help="rebase /opt/bytehawks onto another directory (non-root builds, staging, tests)")
         p.add_argument("--arch", help="architecture label (default: detected, amd64/arm64)")
         p.add_argument("--libc", choices=["glibc", "musl"], help="C library the units are built for (default: detected, or BH_LIBC)")
+        p.add_argument("--linkage", choices=["dynamic", "static"], help="static = link the binaries of packages that define a `static:` recipe without a dynamic loader (default: dynamic, or BH_LINKAGE)")
         if package:
             p.add_argument("--package", required=required)
             p.add_argument("--variant", help="default: stable, or the first declared variant")
@@ -166,7 +167,7 @@ def load_catalog(args):
     if args.root:
         config = apply_root(config, args.root)
     return Catalog(config, load_yaml(args.packages), getattr(args, "jobs", None), getattr(args, "arch", None), getattr(args, "assets", None),
-                   getattr(args, "libc", None))
+                   getattr(args, "libc", None), getattr(args, "linkage", None))
 
 
 COMMANDS = {

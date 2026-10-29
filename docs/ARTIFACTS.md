@@ -14,8 +14,8 @@ bh--nginx--stable--application--amd64--1.28.3--a1146e116dea
 * `recipe12` = first 12 hex of the unit's recipe hash. Same name ⇔ same recipe, same prefix, same
   dependencies, same architecture. Changing a flag, the source hash or a dependency changes the name.
 * `arch` is the **platform**: the plain architecture for glibc (`amd64`, so existing names do not change) and
-  `<arch>-musl` for musl (`amd64-musl`, `arm64-musl`). A glibc and a musl build of the same recipe are two artifacts and can live in
-  the same store. The sidecar records `arch`, `libc` and `platform`.
+  `<arch>-musl` for musl (`amd64-musl`, `arm64-musl`). A static build appends `-static` (`amd64-static`, `amd64-musl-static`, see [STATIC](STATIC.md)). A glibc and a musl build of the same recipe are two artifacts and can live in
+  the same store. The sidecar records `arch`, `libc`, `linkage` and `platform`.
 * `variant` is the first alias of the variant (`old-legacy`, not `legacy`).
 * Names contain neither `/` nor `:` nor `|` and fit GitHub's artifact-name rules; the separator is `--`
   (package and variant names must not contain it).

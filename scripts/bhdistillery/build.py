@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import bundle, fetch, package as artifact, signature
+from . import bundle, elfcheck, fetch, package as artifact, signature
 from .templates import resolve_template
 
 STAGES = ("pre", "configure", "make", "check", "install", "post")
@@ -119,6 +119,12 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     log_file = Path(cfg["log_path"]) / f"{unit.name}-{unit.variant_data['full_version']}.log"
     started = time.time()
     run_script(script, unit.src_dir, build_env(unit, unit.context["deps_prefix"]), log_file, echo=log)
+
+    if unit.context["linkage"] == "static":
+        problems = elfcheck.check_static(unit.prefix, unit.package.get("static", {}).get("binaries", []))
+        if problems:
+            raise BuildError(f"{unit.name}: built as static but " + "; ".join(problems))
+        log(f"[static] {', '.join(unit.package['static']['binaries']) or 'no binaries declared'}: no dynamic loader, no needed libraries")
 
     out = bundle.emit(unit, assets_root, built=True)
     changed = artifact.changed_paths(before, artifact.snapshot(unit.prefix))
