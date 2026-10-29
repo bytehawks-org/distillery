@@ -59,7 +59,7 @@ storage:
 
 def entries(text, fmt, **kw):
     settings, lines = sc.parse(text, fmt, kw.pop("commented", "no"))
-    chosen = sc.select(settings, kw.pop("include", ""), kw.pop("exclude", ""))
+    chosen = sc.select(settings, kw.pop("include", ""), kw.pop("exclude", ""), 0, kw.pop("also", ""))
     return chosen, lines, sc.env_entries("demo", chosen, fmt, kw.pop("hints", None), lines)
 
 
@@ -84,11 +84,27 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(by["BH_DEMO_PORT"]["cli"], "--port")
         self.assertNotIn("default", by["BH_DEMO_LOGFILE"])                                       # empty value: no default
 
+    def test_a_commented_example_of_an_active_directive_is_not_a_duplicate(self):
+        text = "port 6379\n# port 0\n# tls-port 6379\n# tls-port 7000\nsave 1 2\nsave 3 4\n"
+        settings, _ = sc.parse(text, "space", "loose")
+        by = {s.key: s for s in settings if s.key != "save"}
+        self.assertFalse(by["port"].repeated)                           # still a parameter
+        self.assertTrue(by["port"].active)
+        self.assertFalse(by["tls-port"].active)
+        self.assertEqual(sum(1 for s in settings if s.key == "tls-port"), 1)       # one example kept
+        self.assertTrue(all(s.repeated for s in settings if s.key == "save"))      # real repeats stay out
+
+    def test_a_port_that_documents_zero_is_not_range_checked_as_a_port(self):
+        text = "# If port 0 is specified the server will not listen on a TCP socket.\nport 6379\n# Plain port.\nhttp-port 8080\n"
+        _, _, env = entries(text, "space")
+        self.assertEqual({e["name"]: e["type"] for e in env}, {"BH_DEMO_PORT": "uint", "BH_DEMO_HTTP_PORT": "port"})
+
     def test_commented_defaults_strict_and_loose(self):
         self.assertEqual([s.key for s in sc.parse(SPACE, "space", "no")[0]].count("requirepass"), 0)
         loose = {s.key: s for s in sc.parse(SPACE, "space", "loose")[0]}
         self.assertFalse(loose["requirepass"].active)
-        chosen, lines, env = entries(SPACE, "space", commented="loose", include="^requirepass$")
+        chosen, lines, env = entries(SPACE, "space", commented="loose", also="^requirepass$", include="^$")
+        self.assertEqual([s.key for s in chosen], ["requirepass"])                              # --include narrows the active ones only
         self.assertEqual((env[0]["type"], "default" in env[0]), ("secret", False))               # a secret never gets a default
 
     def test_equals_format_with_quotes_and_trailing_comments(self):
@@ -97,7 +113,9 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(sorted(by), ["BH_DEMO_LISTEN_ADDRESSES", "BH_DEMO_MAX_CONNECTIONS", "BH_DEMO_PASSWORD_ENCRYPTION",
                                       "BH_DEMO_PORT", "BH_DEMO_SHARED_BUFFERS"])                  # the prose line is not a setting
         self.assertEqual(by["BH_DEMO_LISTEN_ADDRESSES"]["default"], "localhost")                  # quotes are not part of the value
-        self.assertEqual(by["BH_DEMO_PORT"]["type"], "port")
+        self.assertEqual(by["BH_DEMO_PORT"]["type"], "uint")                                     # optional: 0/off must stay possible
+        self.assertNotIn("default", by["BH_DEMO_PORT"])                                         # `#port = 5432` is documentation, not a setting
+        self.assertNotIn("default", by["BH_DEMO_PASSWORD_ENCRYPTION"])
         self.assertEqual(by["BH_DEMO_SHARED_BUFFERS"]["default"], "128MB")
         self.assertEqual(by["BH_DEMO_MAX_CONNECTIONS"]["file_key"], "max_connections")
 
@@ -159,15 +177,18 @@ class TemplateTests(unittest.TestCase):
         chosen, lines, env = entries(EQUALS, "equals", commented="strict")
         template = sc.render_template(lines, chosen, "equals")
         values = {e["name"]: e.get("default", "") for e in env}
+        out = self.render(template, values).splitlines()
+        self.assertIn("#port = 5432                           # (change requires restart)", [l for l in lines])
+        self.assertFalse(any(l.startswith("port") for l in out))                                   # unset: the line is not emitted at all
         values["BH_DEMO_LISTEN_ADDRESSES"] = "*"
         values["BH_DEMO_PORT"] = 6000
         out = self.render(template, values).splitlines()
         self.assertIn("listen_addresses = '*'         # what IP address(es) to listen on;", out)
-        self.assertIn("port = 6000                           # (change requires restart)", out)       # `#port` became active
+        self.assertIn("port = 6000                           # (change requires restart)", out)       # set: the commented line became active
         self.assertIn("shared_buffers = 128MB                 # min 128kB", out)
 
     def test_optional_settings_are_conditional_lines(self):
-        chosen, lines, env = entries(SPACE, "space", commented="loose", include="^(requirepass|logfile)$")
+        chosen, lines, env = entries(SPACE, "space", commented="loose", also="^requirepass$", include="^logfile$")
         template = sc.render_template(lines, chosen, "space")
         self.assertIn("{{? BH_DEMO_REQUIREPASS }}requirepass {{ BH_DEMO_REQUIREPASS }}", template)
         self.assertIn('{{? BH_DEMO_LOGFILE }}logfile "{{ BH_DEMO_LOGFILE }}"', template)         # quotes stay around the value
@@ -196,6 +217,21 @@ class MergeTests(unittest.TestCase):
             self.assertEqual((again, template_again), ([], False))                 # idempotent
             self.assertEqual(f.read_text().count("name: BH_DEMO_BIND"), 1)
 
+    def test_defaults_that_yaml_would_reinterpret_are_quoted(self):
+        import yaml
+        with TempDir() as t:
+            f = t / "packages.yaml"
+            f.write_text("package:\n  demo: {}\n")
+            _, _, env = entries("protected-mode yes\ndaemonize no\nmode on\nname 1e3\nempty-ish null\n", "space")
+            sc.merge_into_packages(f, "demo", env, None)
+            loaded = yaml.safe_load(f.read_text())["package"]["demo"]["runtime"]["env"]
+            defaults = {e["name"]: e["default"] for e in loaded}
+            self.assertEqual(defaults["BH_DEMO_PROTECTED_MODE"], "yes")           # a string, not True
+            self.assertEqual(defaults["BH_DEMO_DAEMONIZE"], "no")
+            self.assertEqual(defaults["BH_DEMO_MODE"], "on")
+            self.assertEqual(defaults["BH_DEMO_NAME"], "1e3")
+            self.assertEqual(defaults["BH_DEMO_EMPTY_ISH"], "null")
+
     def test_merge_needs_the_package_to_exist(self):
         with TempDir() as t:
             f = t / "packages.yaml"
@@ -217,7 +253,7 @@ class CommandTests(unittest.TestCase):
             class Args:
                 package, source, format, commented = "demo", str(t / "demo.conf"), None, "no"
                 include, exclude, max, hint = "", "^save$", 0, None
-                template, dest, mode = None, None, "0640"
+                template, dest, mode, also = None, None, "0640", ""
                 assets, packages = str(t / "assets"), str(t / "packages.yaml")
                 list, write = True, False
 

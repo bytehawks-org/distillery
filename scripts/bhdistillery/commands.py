@@ -312,8 +312,9 @@ def cmd_scaffold(catalog, args):
     text = source.read_text()
     fmt = args.format or scaffold.detect_format(text, source.name)
     hints = dict(h.split("=", 1) for h in (args.hint or []))
-    settings, lines = scaffold.parse(text, fmt, args.commented)
-    chosen = scaffold.select(settings, args.include or "", args.exclude or "", args.max or 0)
+    commented = args.commented if args.commented != "no" or not args.also else "loose"
+    settings, lines = scaffold.parse(text, fmt, commented)
+    chosen = scaffold.select(settings, args.include or "", args.exclude or "", args.max or 0, args.also or "")
     entries = scaffold.env_entries(args.package, chosen, fmt, hints, lines)
     skipped = sum(1 for s in settings if s.repeated)
     eprint(f"{source.name}: format {fmt}, {len(settings)} settings found, {len(entries)} selected"

@@ -375,6 +375,446 @@ package:
     tags:
       - application
 
+  # Built from a git tag pinned by commit (the upstream tarballs are not needed). runtime.env and the configuration template
+  # come from `autobuilder.py scaffold` run on the valkey.conf the project ships; only the defaults that cannot work for a
+  # service account (dir, pidfile) are edited by hand.
+  valkey:
+    variant:
+      - name: stable
+        major_version: 9.1
+        patch_version: 3
+        full_version: 9.1.3
+        commit: 29173b67508b2de4c0f0ed551f3b47cf19fc3ca8
+    license: BSD-3-Clause
+    website: https://valkey.io/
+    depends_on:
+      - {name: openssl, variant: stable}
+    git:
+      repo: https://github.com/valkey-io/valkey
+      ref_template: "{{ full_version }}"
+    upstream:
+      tag_regex: '^(\d+\.\d+\.\d+)$'
+    commands:
+      make: make -j{{ jobs }} BUILD_TLS=yes OPENSSL_PREFIX={{ deps_prefix }} USE_SYSTEMD=no
+      install: make PREFIX={{ prefix }} install
+    runtime:
+      user:
+        name: valkey
+        uid: 1001
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1001:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      run:
+        command:
+          - "{{ prefix }}/bin/valkey-server"
+          - "{{ prefix }}/conf/valkey.conf"
+        stop_signal: TERM
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_VALKEY_PORT}"}
+      env:
+        - name: BH_VALKEY_BIND
+          type: string
+          default: 127.0.0.1 -::1
+          cli: --bind
+          description: You will also need to set a password unless you explicitly disable protected
+        - name: BH_VALKEY_PROTECTED_MODE
+          type: enum:yes,no
+          default: "yes"
+          cli: --protected-mode
+          description: By default protected mode is enabled. You should disable it only if you are sure you want clients from other hosts to connect to the server even if no...
+        - name: BH_VALKEY_PORT
+          type: uint
+          default: 6379
+          cli: --port
+          description: 'Accept connections on the specified port, default is 6379 (IANA #815344). If port 0 is specified the server will not listen on a TCP socket.'
+        - name: BH_VALKEY_TCP_BACKLOG
+          type: uint
+          default: 511
+          cli: --tcp-backlog
+          description: In high requests-per-second environments you need a high backlog in order to avoid slow clients connection issues.
+        - name: BH_VALKEY_TIMEOUT
+          type: uint
+          default: 0
+          cli: --timeout
+          description: Close the connection after a client is idle for N seconds (0 to disable)
+        - name: BH_VALKEY_TCP_KEEPALIVE
+          type: uint
+          default: 300
+          cli: --tcp-keepalive
+          description: On Linux, the specified value (in seconds) is the period used to send ACKs. Note that to close the connection the double of the time is needed.
+        - name: BH_VALKEY_TLS_PORT
+          type: uint
+          cli: --tls-port
+          description: By default, TLS/SSL is disabled. To enable it, the "tls-port" configuration directive can be used to define TLS-listening ports. To enable TLS on the
+        - name: BH_VALKEY_TLS_CERT_FILE
+          type: string
+          cli: --tls-cert-file
+          description: Configure a X.509 certificate and private key to use for authenticating the server to connected clients, primaries or cluster peers.
+        - name: BH_VALKEY_TLS_KEY_FILE
+          type: string
+          cli: --tls-key-file
+          description: tls-cert-file valkey.crt
+        - name: BH_VALKEY_TLS_CA_CERT_FILE
+          type: string
+          cli: --tls-ca-cert-file
+          description: Configure a CA certificate(s) bundle or directory to authenticate TLS/SSL clients and peers.
+        - name: BH_VALKEY_TLS_AUTH_CLIENTS
+          type: enum:yes,no
+          cli: --tls-auth-clients
+          description: If "no" is specified, client certificates are not required and not accepted.
+        - name: BH_VALKEY_PIDFILE
+          type: path
+          default: "{{ prefix }}/run/valkey.pid"
+          cli: --pidfile
+          description: Note that on modern Linux systems "/run/valkey.pid" is more conforming and should be used instead.
+        - name: BH_VALKEY_LOGLEVEL
+          type: enum:debug,verbose,notice,warning,nothing
+          default: notice
+          cli: --loglevel
+          description: 'Specify the server verbosity level. This can be one of: debug (a lot of information, useful for development/testing) verbose (many rarely useful info, but not...'
+        - name: BH_VALKEY_LOGFILE
+          type: string
+          cli: --logfile
+          description: Specify the log file name. Also the empty string can be used to force the server to log on the standard output.
+        - name: BH_VALKEY_DATABASES
+          type: uint
+          default: 16
+          cli: --databases
+          description: Set the number of databases. The default database is DB 0, you can select a different one on a per-connection basis using SELECT <dbid> where dbid is a number...
+        - name: BH_VALKEY_ALWAYS_SHOW_LOGO
+          type: enum:yes,no
+          default: "no"
+          cli: --always-show-logo
+          description: However it is possible to force the pre-4.0 behavior and always show a ASCII art logo in startup logs by setting the following option to yes.
+        - name: BH_VALKEY_HIDE_USER_DATA_FROM_LOG
+          type: enum:yes,no
+          default: "yes"
+          cli: --hide-user-data-from-log
+          description: User data, including keys, values, client names, and ACL usernames, can be logged as part of assertions and other error cases.
+        - name: BH_VALKEY_SET_PROC_TITLE
+          type: enum:yes,no
+          default: "yes"
+          cli: --set-proc-title
+          description: By default, the server modifies the process title (as seen in 'top' and 'ps') to provide some runtime information.
+        - name: BH_VALKEY_PROC_TITLE_TEMPLATE
+          type: string
+          default: '{title} {listen-addr} {server-mode}'
+          cli: --proc-title-template
+          description: '{title} Name of process as executed if parent, or type of child process.'
+        - name: BH_VALKEY_LOCALE_COLLATE
+          type: string
+          cli: --locale-collate
+          description: Set the local environment which is used for string comparison operations, and also affect the performance of Lua scripts.
+        - name: BH_VALKEY_STOP_WRITES_ON_BGSAVE_ERROR
+          type: enum:yes,no
+          default: "yes"
+          cli: --stop-writes-on-bgsave-error
+          description: However if you have setup your proper monitoring of the server and persistence, you may want to disable this feature so that the server will continue to work...
+        - name: BH_VALKEY_RDBCOMPRESSION
+          type: enum:yes,no
+          default: "yes"
+          cli: --rdbcompression
+          description: Compress string objects using LZF when dump .rdb databases? By default compression is enabled as it's almost always a win.
+        - name: BH_VALKEY_RDBCHECKSUM
+          type: enum:yes,no
+          default: "yes"
+          cli: --rdbchecksum
+          description: RDB files created with checksum disabled have a checksum of zero that will tell the loading code to skip the check.
+        - name: BH_VALKEY_RDB_VERSION_CHECK
+          type: string
+          default: strict
+          cli: --rdb-version-check
+          description: Valkey can try to load an RDB dump produced by a future version of Valkey.
+        - name: BH_VALKEY_DBFILENAME
+          type: string
+          default: dump.rdb
+          cli: --dbfilename
+          description: The filename where to dump the DB
+        - name: BH_VALKEY_RDB_DEL_SYNC_FILES
+          type: enum:yes,no
+          default: "no"
+          cli: --rdb-del-sync-files
+          description: An alternative (and sometimes better) way to obtain the same effect is to use diskless replication on both primary and replicas instances.
+        - name: BH_VALKEY_DIR
+          type: path
+          default: "{{ prefix }}/data"
+          cli: --dir
+          description: Note that you must specify a directory here, not a file name.
+        - name: BH_VALKEY_REPLICA_SERVE_STALE_DATA
+          type: enum:yes,no
+          default: "yes"
+          cli: --replica-serve-stale-data
+          description: 2) If replica-serve-stale-data is set to 'no' the replica will reply with error "MASTERDOWN Link with MASTER is down and replica-serve-stale-data is set to...
+        - name: BH_VALKEY_REPLICA_READ_ONLY
+          type: enum:yes,no
+          default: "yes"
+          cli: --replica-read-only
+          description: 'Note: read only replicas are not designed to be exposed to untrusted clients on the internet.'
+        - name: BH_VALKEY_REPL_DISKLESS_SYNC
+          type: enum:yes,no
+          default: "yes"
+          cli: --repl-diskless-sync
+          description: With slow disks and fast (large bandwidth) networks, diskless replication works better.
+        - name: BH_VALKEY_REPL_DISKLESS_SYNC_DELAY
+          type: uint
+          default: 5
+          cli: --repl-diskless-sync-delay
+          description: The delay is specified in seconds, and by default is 5 seconds. To disable it entirely just set it to 0 seconds and the transfer will start ASAP.
+        - name: BH_VALKEY_REPL_DISKLESS_SYNC_MAX_REPLICAS
+          type: uint
+          default: 0
+          cli: --repl-diskless-sync-max-replicas
+          description: When diskless replication is enabled with a delay, it is possible to let the replication start before the maximum delay is reached if the maximum number of...
+        - name: BH_VALKEY_REPL_DISKLESS_LOAD
+          type: enum:enabled,disabled
+          default: disabled
+          cli: --repl-diskless-load
+          description: "\"disabled\" - Don't use diskless load (store the rdb file to the disk first) \"swapdb\" - Keep current db contents in RAM while parsing the data directly from the..."
+        - name: BH_VALKEY_DUAL_CHANNEL_REPLICATION_ENABLED
+          type: enum:yes,no
+          default: "no"
+          cli: --dual-channel-replication-enabled
+          description: To enable dual channel replication, both the primary and its replicas should have dual-channel-replication-enabled set to yes.
+        - name: BH_VALKEY_REPL_DISABLE_TCP_NODELAY
+          type: enum:yes,no
+          default: "no"
+          cli: --repl-disable-tcp-nodelay
+          description: By default we optimize for low latency, but in very high traffic conditions or when the primary and replicas are many hops away, turning this to "yes" may be a...
+        - name: BH_VALKEY_REPLICA_PRIORITY
+          type: uint
+          default: 100
+          cli: --replica-priority
+          description: By default the priority is 100.
+        - name: BH_VALKEY_ACLLOG_MAX_LEN
+          type: uint
+          default: 128
+          cli: --acllog-max-len
+          description: The ACL Log tracks failed commands and authentication events associated with ACLs. The ACL Log is useful to troubleshoot failed commands blocked by ACLs.
+        - name: BH_VALKEY_REQUIREPASS
+          type: secret
+          cli: --requirepass
+          description: The requirepass is not compatible with aclfile option and the ACL LOAD command, these will cause requirepass to be ignored.
+        - name: BH_VALKEY_MAXMEMORY
+          type: string
+          cli: --maxmemory
+          description: In short... if you have replicas attached it is suggested that you set a lower limit for maxmemory so that there is some free RAM on the system for replica...
+        - name: BH_VALKEY_MAXMEMORY_POLICY
+          type: string
+          cli: --maxmemory-policy
+          description: 'The default is:'
+        - name: BH_VALKEY_LAZYFREE_LAZY_EVICTION
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-eviction
+        - name: BH_VALKEY_LAZYFREE_LAZY_EXPIRE
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-expire
+        - name: BH_VALKEY_LAZYFREE_LAZY_SERVER_DEL
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-server-del
+        - name: BH_VALKEY_REPLICA_LAZY_FLUSH
+          type: enum:yes,no
+          default: "yes"
+          cli: --replica-lazy-flush
+        - name: BH_VALKEY_LAZYFREE_LAZY_USER_DEL
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-user-del
+        - name: BH_VALKEY_LAZYFREE_LAZY_USER_FLUSH
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-user-flush
+        - name: BH_VALKEY_OOM_SCORE_ADJ
+          type: enum:yes,no
+          default: "no"
+          cli: --oom-score-adj
+          description: "no: Don't make changes to oom-score-adj (default). yes: Alias to \"relative\" see below."
+        - name: BH_VALKEY_OOM_SCORE_ADJ_VALUES
+          type: string
+          default: 0 200 800
+          cli: --oom-score-adj-values
+          description: Unprivileged processes (not root, and without CAP_SYS_RESOURCE capabilities) can freely increase their value, but not decrease it below its initial settings....
+        - name: BH_VALKEY_DISABLE_THP
+          type: enum:yes,no
+          default: "yes"
+          cli: --disable-thp
+        - name: BH_VALKEY_APPENDONLY
+          type: enum:yes,no
+          default: "no"
+          cli: --appendonly
+        - name: BH_VALKEY_APPENDFILENAME
+          type: string
+          default: appendonly.aof
+          cli: --appendfilename
+        - name: BH_VALKEY_APPENDDIRNAME
+          type: string
+          default: appendonlydir
+          cli: --appenddirname
+        - name: BH_VALKEY_APPENDFSYNC
+          type: string
+          default: everysec
+          cli: --appendfsync
+        - name: BH_VALKEY_NO_APPENDFSYNC_ON_REWRITE
+          type: enum:yes,no
+          default: "no"
+          cli: --no-appendfsync-on-rewrite
+        - name: BH_VALKEY_AUTO_AOF_REWRITE_PERCENTAGE
+          type: uint
+          default: 100
+          cli: --auto-aof-rewrite-percentage
+        - name: BH_VALKEY_AUTO_AOF_REWRITE_MIN_SIZE
+          type: string
+          default: 64mb
+          cli: --auto-aof-rewrite-min-size
+        - name: BH_VALKEY_AOF_LOAD_TRUNCATED
+          type: enum:yes,no
+          default: "yes"
+          cli: --aof-load-truncated
+          description: Note that if the AOF file will be found to be corrupted in the middle the server will still exit with an error.
+        - name: BH_VALKEY_AOF_USE_RDB_PREAMBLE
+          type: enum:yes,no
+          default: "yes"
+          cli: --aof-use-rdb-preamble
+          description: The server can create append-only base files in either RDB or AOF formats.
+        - name: BH_VALKEY_AOF_TIMESTAMP_ENABLED
+          type: enum:yes,no
+          default: "no"
+          cli: --aof-timestamp-enabled
+          description: The server supports recording timestamp annotations in the AOF to support restoring the data from a specific point-in-time.
+        - name: BH_VALKEY_COMMANDLOG_EXECUTION_SLOWER_THAN
+          type: uint
+          default: 10000
+          cli: --commandlog-execution-slower-than
+          description: The following time is expressed in microseconds, so 1000000 is equivalent to 1 second.
+        - name: BH_VALKEY_COMMANDLOG_SLOW_EXECUTION_MAX_LEN
+          type: uint
+          default: 128
+          cli: --commandlog-slow-execution-max-len
+          description: Record the number of commands. There is no limit to this length. Just be aware that it will consume memory.
+        - name: BH_VALKEY_COMMANDLOG_REQUEST_LARGER_THAN
+          type: uint
+          default: 1048576
+          cli: --commandlog-request-larger-than
+          description: The threshold is measured in bytes. Note that -1 disables the large request log, while 0 forces logging of every command.
+        - name: BH_VALKEY_COMMANDLOG_LARGE_REQUEST_MAX_LEN
+          type: uint
+          default: 128
+          cli: --commandlog-large-request-max-len
+          description: Record the number of commands. There is no limit to this length. Just be aware that it will consume memory.
+        - name: BH_VALKEY_COMMANDLOG_REPLY_LARGER_THAN
+          type: uint
+          default: 1048576
+          cli: --commandlog-reply-larger-than
+          description: The threshold is measured in bytes. Note that -1 disables the large reply log, while 0 forces logging of every command.
+        - name: BH_VALKEY_COMMANDLOG_LARGE_REPLY_MAX_LEN
+          type: uint
+          default: 128
+          cli: --commandlog-large-reply-max-len
+          description: Record the number of commands. There is no limit to this length. Just be aware that it will consume memory.
+        - name: BH_VALKEY_LATENCY_MONITOR_THRESHOLD
+          type: uint
+          default: 0
+          cli: --latency-monitor-threshold
+          description: By default latency monitoring is disabled since it is mostly not needed if you don't have latency issues, and collecting data has a performance impact, that...
+        - name: BH_VALKEY_NOTIFY_KEYSPACE_EVENTS
+          type: string
+          cli: --notify-keyspace-events
+          description: By default all notifications are disabled because most users don't need this feature and the feature has some overhead.
+        - name: BH_VALKEY_HASH_MAX_LISTPACK_ENTRIES
+          type: uint
+          default: 512
+          cli: --hash-max-listpack-entries
+          description: Hashes use listpacks when they have a small number of entries, and the biggest field or value does not exceed the following limits.
+        - name: BH_VALKEY_HASH_MAX_LISTPACK_VALUE
+          type: uint
+          default: 64
+          cli: --hash-max-listpack-value
+        - name: BH_VALKEY_LIST_MAX_LISTPACK_SIZE
+          type: int
+          default: -2
+          cli: --list-max-listpack-size
+          description: Lists are stored as quicklists, where each internal node is a listpack.
+        - name: BH_VALKEY_LIST_COMPRESS_DEPTH
+          type: uint
+          default: 0
+          cli: --list-compress-depth
+          description: Lists may also be compressed. Compress depth is the number of quicklist nodes from *each* side of the list to *exclude* from compression.
+        - name: BH_VALKEY_SET_MAX_INTSET_ENTRIES
+          type: uint
+          default: 512
+          cli: --set-max-intset-entries
+          description: Sets containing only integers can use intset encoding. The following setting limits the largest set that can use intset encoding.
+        - name: BH_VALKEY_SET_MAX_LISTPACK_ENTRIES
+          type: uint
+          default: 128
+          cli: --set-max-listpack-entries
+          description: Sets containing non-integer values use listpacks when they have a small number of entries, and the biggest member does not exceed the following
+        - name: BH_VALKEY_SET_MAX_LISTPACK_VALUE
+          type: uint
+          default: 64
+          cli: --set-max-listpack-value
+        - name: BH_VALKEY_ZSET_MAX_LISTPACK_ENTRIES
+          type: uint
+          default: 128
+          cli: --zset-max-listpack-entries
+          description: 'Sorted sets use listpacks when they have a small number of entries, and the biggest member does not exceed the following limits:'
+        - name: BH_VALKEY_ZSET_MAX_LISTPACK_VALUE
+          type: uint
+          default: 64
+          cli: --zset-max-listpack-value
+        - name: BH_VALKEY_HLL_SPARSE_MAX_BYTES
+          type: uint
+          default: 3000
+          cli: --hll-sparse-max-bytes
+          description: The suggested value is ~ 3000 in order to have the benefits of the space efficient encoding without slowing down too much PFADD, which is O(N) with the sparse...
+        - name: BH_VALKEY_STREAM_NODE_MAX_BYTES
+          type: uint
+          default: 4096
+          cli: --stream-node-max-bytes
+          description: Streams macro node max size / items. The stream data structure is a radix tree of big nodes that encode multiple items inside.
+        - name: BH_VALKEY_STREAM_NODE_MAX_ENTRIES
+          type: uint
+          default: 100
+          cli: --stream-node-max-entries
+        - name: BH_VALKEY_ACTIVEREHASHING
+          type: enum:yes,no
+          default: "yes"
+          cli: --activerehashing
+          description: Active rehashing runs as a background task.
+        - name: BH_VALKEY_HZ
+          type: uint
+          default: 10
+          cli: --hz
+          description: The range is between 1 and 500, however a value over 100 is usually not a good idea.
+        - name: BH_VALKEY_AOF_REWRITE_INCREMENTAL_FSYNC
+          type: enum:yes,no
+          default: "yes"
+          cli: --aof-rewrite-incremental-fsync
+          description: When a child rewrites the AOF file, if the following option is enabled the file will be fsync-ed every 4 MB of data generated.
+        - name: BH_VALKEY_RDB_SAVE_INCREMENTAL_FSYNC
+          type: enum:yes,no
+          default: "yes"
+          cli: --rdb-save-incremental-fsync
+          description: When the server saves RDB file, if the following option is enabled the file will be fsync-ed every 4 MB of data generated.
+        - name: BH_VALKEY_JEMALLOC_BG_THREAD
+          type: enum:yes,no
+          default: "yes"
+          cli: --jemalloc-bg-thread
+          description: Jemalloc background thread for purging will be enabled by default
+      templates:
+        - src: valkey.conf.tmpl
+          dest: '{{ prefix }}/conf/valkey.conf'
+          mode: '0640'
+    tags:
+      - application
+
   # The tool `autobuilder.py package` uses to write deb/rpm/apk. Prebuilt Go binary; the archive has no top directory.
   # Upstream publishes one checksums.txt for all files, so no checksum_url_template (the pin is still sha256 per arch).
   nfpm:

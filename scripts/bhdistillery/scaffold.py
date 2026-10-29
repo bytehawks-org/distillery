@@ -66,6 +66,9 @@ def _doc_above(lines, index):
     i = index - 1
     while i >= 0 and lines[i].lstrip().startswith("#"):
         text = lines[i].lstrip().lstrip("#").strip()
+        if re.match(r"^[a-z][\w.\-]*(\s+[^\s.]+){0,3}$", text):
+            i -= 1                                           # an example directive (`tls-port 6379`), not prose
+            continue
         if text and not re.match(r"^[#=\-*~_]{3,}$", text):
             collected.append(text)
         elif not text and collected:
@@ -123,7 +126,8 @@ def _split_value(rest):
 
 
 def parse(text, fmt, commented="no"):
-    """Settings of a file. `commented`: 'no' (active lines only), 'strict' (also `#key = value` written with no space after
+    """Settings of a file. A setting found only as a commented default is an *example*, not a default: it gets no default value
+    and its template line is conditional. `commented`: 'no' (active lines only), 'strict' (also `#key = value` written with no space after
     the #, the way sample files document defaults), 'loose' (also `# key value`; prose can match, review the result)."""
     if fmt not in FORMATS:
         raise ScaffoldError(f"unknown format '{fmt}' (use {', '.join(FORMATS)})")
@@ -187,6 +191,16 @@ def parse(text, fmt, commented="no"):
                 setting.doc = trailing.group(1).strip()
         settings.append(setting)
 
+    # a commented example of a directive that is also set (`# port 0` next to `port 6379`) is documentation, not a second setting;
+    # and only the first of several commented examples of one key is kept
+    active_paths = {s.path for s in settings if s.active}
+    kept, example_paths = [], set()
+    for s in settings:
+        if not s.active and (s.path in active_paths or s.path in example_paths):
+            continue
+        example_paths.add(s.path) if not s.active else None
+        kept.append(s)
+    settings = kept
     seen = {}
     for s in settings:
         if s.path in seen:
@@ -210,7 +224,9 @@ def infer(setting, hints=None, lines=None):
     elif lines is not None and _enum_from_doc(lines, setting.line, value):
         setting.type = "enum:" + ",".join(_enum_from_doc(lines, setting.line, value))
     elif re.fullmatch(r"-?\d+", value):
-        if re.search(r"(^|[_.\-])port$", key, re.I) and 0 < int(value) < 65536:
+        if re.search(r"(^|[_.\-])port$", key, re.I) and 0 < int(value) < 65536 and setting.active \
+                and not re.search(r"\b(port\s+)?0\b", setting.doc):
+            # 1..65535. Not for a documented `0` (= disabled) nor for an optional (commented) one, where "off" is a likely value
             setting.type = "port"
         else:
             setting.type = "uint" if int(value) >= 0 else "int"
@@ -230,13 +246,17 @@ def env_name(package, setting):
     return f"BH_{re.sub(r'[^A-Za-z0-9]+', '_', package).upper()}_{base}"
 
 
-def select(settings, include="", exclude="", maximum=0):
-    """Candidates to expose: not repeated, matching --include (a regex on the key or section.key), not --exclude."""
+def select(settings, include="", exclude="", maximum=0, also=""):
+    """Candidates to expose: not repeated, matching --include (a regex on the key or section.key), not --exclude.
+    With `also`, settings found only as commented defaults are taken just when they match it (the active ones all stay)."""
     chosen = []
     for s in settings:
         if s.repeated:
             continue
-        if include and not re.search(include, s.path):
+        if not s.active and also:
+            if not re.search(also, s.path):
+                continue
+        elif include and not re.search(include, s.path):
             continue
         if exclude and re.search(exclude, s.path):
             continue
@@ -264,7 +284,7 @@ def env_entries(package, settings, fmt, hints=None, lines=None):
         used.add(name)
         s.name = name
         entry = {"name": name, "type": s.type}
-        if not s.secret and s.value != "":
+        if not s.secret and s.value != "" and s.active:           # a commented value is an example, not a default
             entry["default"] = int(s.value) if s.type in ("int", "uint", "port") else s.value
         if fmt in ("ini", "equals", "yaml"):
             entry["file_key"] = s.path
@@ -287,7 +307,7 @@ def render_template(lines, settings, fmt):
         if s is None:
             out.append(line)
             continue
-        optional = s.secret or s.value == ""
+        optional = s.secret or s.value == "" or not s.active
         start, end = s.span
         if s.active:
             new = line[:start] + "{{ " + s.name + " }}" + line[end:]
@@ -304,6 +324,21 @@ def render_template(lines, settings, fmt):
 
 
 # ------------------------------------------------------------------------------------------------------ merge
+
+def _unambiguous(value):
+    """A string that YAML 1.1 (PyYAML) would read as something else (`yes`, `no`, `on`, `1e3`, `null`) is double quoted,
+    so the default of a setting reaches the bundle exactly as the application writes it."""
+    import yaml
+    from ruamel.yaml.scalarstring import DoubleQuotedScalarString
+
+    if not isinstance(value, str) or not value.strip():
+        return value
+    try:
+        reinterpreted = not isinstance(yaml.safe_load(value), str)
+    except yaml.YAMLError:
+        return value                                   # not a plain scalar: the dumper quotes it itself
+    return DoubleQuotedScalarString(value) if reinterpreted else value
+
 
 def merge_into_packages(packages_file, package, entries, template=None):
     """Adds the missing entries to package.<package>.runtime.env (and the template to runtime.templates).
@@ -327,7 +362,7 @@ def merge_into_packages(packages_file, package, entries, template=None):
     for entry in entries:
         if entry["name"] in have:
             continue
-        item = CommentedMap(entry)
+        item = CommentedMap({k: (_unambiguous(v) if k == "default" else v) for k, v in entry.items()})
         env.append(item)
         added.append(entry["name"])
     template_added = False

@@ -144,6 +144,7 @@ def make_parser():
                       help="also take settings documented as comments: strict = '#key = value' (no space after #), loose = '# key value' (prose can match)")
     p_sc.add_argument("--include", metavar="REGEX", help="only settings whose key (or section.key) matches")
     p_sc.add_argument("--exclude", metavar="REGEX", help="leave out settings that match")
+    p_sc.add_argument("--also", metavar="REGEX", help="besides the active settings, also these ones when the file only has them as commented defaults")
     p_sc.add_argument("--max", type=int, help="at most N settings")
     p_sc.add_argument("--hint", action="append", metavar="KEY=TYPE", help="override an inferred type, e.g. loglevel=enum:debug,notice,warning")
     p_sc.add_argument("--list", action="store_true", help="show the proposed parameters and stop")
