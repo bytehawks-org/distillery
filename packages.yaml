@@ -280,15 +280,15 @@ package:
     runtime:
       user:
         name: nifi
-        uid: 1001
+        uid: 1002
         gid: 0
         home: "{{ prefix }}"
       dirs:
-        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/logs", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/work", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/logs", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/work", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1002:0"}
       persistence:
         - {path: "{{ prefix }}/data", volume: /bytehawks/data}
       mutable:                                  # rewritten at every start by the post_init hook: not an integrity violation
@@ -400,13 +400,13 @@ package:
     runtime:
       user:
         name: valkey
-        uid: 1001
+        uid: 1003
         gid: 0
         home: "{{ prefix }}"
       dirs:
-        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1003:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1003:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1003:0"}
       persistence:
         - {path: "{{ prefix }}/data", volume: /bytehawks/data}
       run:
@@ -811,6 +811,75 @@ package:
       templates:
         - src: valkey.conf.tmpl
           dest: '{{ prefix }}/conf/valkey.conf'
+          mode: '0640'
+    tags:
+      - application
+
+  # Binary repack of the upstream release (a static Go binary: the same file runs on glibc and musl). The two settings of the
+  # configuration file come from `autobuilder.py scaffold --format yaml`; the command-line flags that define where it listens
+  # and where it stores data are declared by hand (scaffold reads configuration files, not `--help` output).
+  prometheus:
+    variant:
+      - name: stable
+        major_version: 3.15
+        patch_version: 1
+        full_version: 3.15.1
+        sha256:
+          amd64: 6a726885328ad9efebbf36e876ce2fb6225468a71fd1e7ce3ba666d5f4d97a84
+          arm64: ceb6d21493c37ca0b4513b147642797c68cf39a0f50a444d50e1e80c74f21b26
+    arch_map: {amd64: amd64, arm64: arm64}
+    license: Apache-2.0
+    website: https://prometheus.io/
+    git:
+      repo: https://github.com/prometheus/prometheus
+      release_download_url_template: "{{ git.repo }}/releases/download/v{{ full_version }}/{{ name }}-{{ full_version }}.linux-{{ arch_name }}.tar.gz"
+    upstream:
+      tag_regex: '^v(\d+\.\d+\.\d+)$'
+    commands:
+      install: |
+        mkdir -p {{ prefix }}/bin
+        install -m 0755 prometheus promtool {{ prefix }}/bin/
+    runtime:
+      user:
+        name: prometheus
+        uid: 1004
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1004:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1004:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      run:
+        command:
+          - "{{ prefix }}/bin/prometheus"
+          - --config.file={{ prefix }}/conf/prometheus.yml
+          - --storage.tsdb.path=${BH_PROMETHEUS_DATA_DIR}
+          - --storage.tsdb.retention.time=${BH_PROMETHEUS_RETENTION}
+          - --web.listen-address=${BH_PROMETHEUS_HOST}:${BH_PROMETHEUS_PORT}
+        stop_signal: TERM
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_PROMETHEUS_PORT}"}
+      env:
+        - {name: BH_PROMETHEUS_HOST, type: string, default: 0.0.0.0, cli: --host, description: "Interface the web UI and API listen on"}
+        - {name: BH_PROMETHEUS_PORT, type: port, default: 9090, cli: --port, description: "Port of the web UI and API"}
+        - {name: BH_PROMETHEUS_RETENTION, type: string, default: 15d, cli: --retention, description: "How long samples are kept (--storage.tsdb.retention.time)"}
+        - {name: BH_PROMETHEUS_DATA_DIR, type: path, default: "{{ prefix }}/data", cli: --data-dir, description: "Time series database directory (mount a volume here)"}
+        - name: BH_PROMETHEUS_GLOBAL_SCRAPE_INTERVAL
+          type: string
+          default: 15s
+          file_key: global.scrape_interval
+          cli: --global-scrape-interval
+          description: Set the scrape interval to every 15 seconds. Default is every 1 minute.
+        - name: BH_PROMETHEUS_GLOBAL_EVALUATION_INTERVAL
+          type: string
+          default: 15s
+          file_key: global.evaluation_interval
+          cli: --global-evaluation-interval
+          description: Evaluate rules every 15 seconds. The default is every 1 minute.
+      templates:
+        - src: prometheus.yml.tmpl
+          dest: '{{ prefix }}/conf/prometheus.yml'
           mode: '0640'
     tags:
       - application

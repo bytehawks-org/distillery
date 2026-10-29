@@ -132,7 +132,7 @@ def parse(text, fmt, commented="no"):
     if fmt not in FORMATS:
         raise ScaffoldError(f"unknown format '{fmt}' (use {', '.join(FORMATS)})")
     lines = text.splitlines()
-    settings, section, yaml_stack = [], "", []
+    settings, section, yaml_stack, list_floor = [], "", [], None
 
     for number, line in enumerate(lines):
         stripped = line.strip()
@@ -159,8 +159,19 @@ def parse(text, fmt, commented="no"):
                 continue
 
         if fmt == "yaml":
+            if not active:
+                continue
+            lead = len(line) - len(line.lstrip())
+            if line.lstrip().startswith("-"):                      # a list item and everything nested in it is not a setting
+                if list_floor is None or lead < list_floor:      # keep the outermost list: its items nest deeper lists
+                    list_floor = lead
+                continue
+            if list_floor is not None:
+                if lead > list_floor:
+                    continue
+                list_floor = None
             m = re.match(r"^(\s*)([A-Za-z0-9_.\-]+):\s*(.*)$", body)
-            if not m or not active:
+            if not m:
                 continue
             indent = len(m.group(1))
             while yaml_stack and yaml_stack[-1][0] >= indent:

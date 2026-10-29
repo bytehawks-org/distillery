@@ -52,6 +52,10 @@ alerting:
         - targets: []
 scrape_configs:
   - job_name: "prometheus"
+
+    static_configs:
+      - targets: ["localhost:9090"]
+    scrape_native_histograms: true
 storage:
   retention: 15d
 """
