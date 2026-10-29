@@ -56,9 +56,10 @@ jobs:
         run: |
           set -euo pipefail
           args=()
+          read -r -a stores <<< "${STORES}"
           [ -n "${PACKAGES:-}" ] && args+=(--package "$PACKAGES")
           [ "${FORCE:-false}" = "true" ] && args+=(--force)
-          python scripts/autobuilder.py stale $STORES --github-output "$GITHUB_OUTPUT" --format json "${args[@]}" | tee stale.json
+          python scripts/autobuilder.py stale "${stores[@]}" --github-output "$GITHUB_OUTPUT" --format json "${args[@]}" | tee stale.json
           {
             echo "### Build plan (${{ inputs.libc }}) ${{ inputs.reason && format('- {0}', inputs.reason) || '' }}"
             echo
@@ -121,9 +122,10 @@ jobs:
           FORCE: ${{ inputs.force }}
           PACKAGES: ${{ inputs.packages }}
         run: |
-          force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
-          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
-            --kind library $force --artifacts-dir dist
+          force=(); [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force=(--force)
+          read -r -a stores <<< "${STORES}"
+          /opt/venv/bin/python scripts/autobuilder.py chain "${stores[@]}" --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+            --kind library "${force[@]}" --artifacts-dir dist
       - name: Verify the installed files
         run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --tag library
       - name: Remove the signing key
@@ -189,9 +191,10 @@ jobs:
           FORCE: ${{ inputs.force }}
           PACKAGES: ${{ inputs.packages }}
         run: |
-          force=""; [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force="--force"
-          /opt/venv/bin/python scripts/autobuilder.py chain $STORES --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
-            --kind application $force --artifacts-dir dist
+          force=(); [ "${FORCE:-false}" = "true" ] && [ -n "${PACKAGES:-}" ] && force=(--force)
+          read -r -a stores <<< "${STORES}"
+          /opt/venv/bin/python scripts/autobuilder.py chain "${stores[@]}" --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" \
+            --kind application "${force[@]}" --artifacts-dir dist
       - name: Verify the installed files (application and its dependencies)
         run: /opt/venv/bin/python scripts/autobuilder.py verify --package "${{ matrix.package }}" --variant "${{ matrix.variant }}" --with-deps
       - name: Remove the signing key
