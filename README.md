@@ -34,9 +34,10 @@ upstream tags ──► outdated ──► bump ──► PR ──► build: st
 | **Rebuilds only what is affected** | catalog units are compared with the artifact stores by recipe hash: a new `zlib` makes `zlib` and `nginx` stale, not `openssl`; libraries build serially in dependency order, applications in parallel |
 | **Artifact stores** | content-addressed, deterministic tarballs; GitHub Actions artifacts today, **Nexus raw repository** implemented, any backend behind one small interface; restore instead of compile; `verify` installed files |
 | **glibc and musl** | every unit builds for both C libraries (`--libc`, Debian and Alpine builder images): separate, content-addressed artifacts (`amd64` / `amd64-musl`), deb/rpm from glibc builds and apk from musl ones |
+| **Less manual work** | `scaffold` reads the configuration file an application ships (`key value`, `key = value`, ini, flat YAML) and writes the `runtime.env` entries and the template; valkey's 84 parameters and mosquitto's 109 came out of their own sample files ([docs/SCAFFOLD.md](docs/SCAFFOLD.md)). Sources can also be pinned by git commit |
 | **Shaker, or not** | the bundle carries platform, `mutable` paths, a digest and an optional signature that [Shaker](https://github.com/bytehawks-org/shaker) checks (`verify --files`, `restore`); each tool also works without the other ([INTEGRATION](docs/INTEGRATION.md)) |
 | **Signed** | optional detached OpenPGP signature of every artifact (local key or CI secret); `restore`/`chain` accept only pinned signers; sources are verified too (`signature:` in the catalog) |
-| **Tested** | 108 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
+| **Tested** | 134 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
 
 ## Layout
 
@@ -113,6 +114,7 @@ Reference: [docs/CLI.md](docs/CLI.md).
 | [AUTOMATION](docs/AUTOMATION.md) | the scheduled workflows: watch upstream, rebuild what is affected, setup, operation |
 | [FIRST-RUN](docs/FIRST-RUN.md) | checklist for the first run of the workflows on GitHub: order, predicted results, what to do otherwise |
 | [INTEGRATION](docs/INTEGRATION.md) | Distillery + Shaker, or each alone: what Distillery emits, what Shaker checks, chain of trust, setups |
+| [SCAFFOLD](docs/SCAFFOLD.md) | parameters and templates derived from the configuration file an application ships |
 | [PACKAGING](docs/PACKAGING.md) | deb / rpm / apk: naming templates, contents, dependencies, signing, limits |
 | [ARTIFACTS](docs/ARTIFACTS.md) | artifact format and identity, stores (dir, GitHub, Nexus), restore, integrity |
 | [CLI](docs/CLI.md) | every command and option, exit codes |

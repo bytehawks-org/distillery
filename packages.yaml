@@ -42,6 +42,7 @@ package:
           --libdir=lib \
           --openssldir={{ prefix }}/etc/ssl \
           -static \
+          -fPIC \
           no-shared \
           no-tests \
           no-docs
@@ -280,15 +281,15 @@ package:
     runtime:
       user:
         name: nifi
-        uid: 1001
+        uid: 1002
         gid: 0
         home: "{{ prefix }}"
       dirs:
-        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/logs", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/work", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1001:0"}
-        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/logs", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/work", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1002:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1002:0"}
       persistence:
         - {path: "{{ prefix }}/data", volume: /bytehawks/data}
       mutable:                                  # rewritten at every start by the post_init hook: not an integrity violation
@@ -372,6 +373,1047 @@ package:
           file_key: jvm.java_home
           cli: --java-home
           description: Java runtime used by NiFi (21 or later)
+    tags:
+      - application
+
+  # JSON parser needed by mosquitto 2.1. Small C library built from a git tag pinned by commit; only the static archive is
+  # installed so nothing needs a run-time library path.
+  cjson:
+    variant:
+      - name: all
+        major_version: 1.7
+        patch_version: 19
+        full_version: 1.7.19
+        commit: c859b25da02955fef659d658b8f324b5cde87be3
+    license: MIT
+    website: https://github.com/DaveGamble/cJSON
+    git:
+      repo: https://github.com/DaveGamble/cJSON
+      ref_template: "v{{ full_version }}"
+    upstream:
+      tag_regex: '^v(\d+\.\d+\.\d+)$'
+    commands:
+      make: make -j{{ jobs }} static
+      install: |
+        mkdir -p {{ prefix }}/include/cjson {{ prefix }}/lib
+        cp cJSON.h cJSON_Utils.h {{ prefix }}/include/cjson/
+        cp libcjson.a libcjson_utils.a {{ prefix }}/lib/
+    tags:
+      - library
+
+  # Built from a git tag pinned by commit (the upstream tarballs are not needed). runtime.env and the configuration template
+  # come from `autobuilder.py scaffold` run on the valkey.conf the project ships; nothing in them is edited by hand:
+  #   autobuilder.py scaffold --package valkey --from valkey.conf --write \
+  #     --exclude '^(include|loadmodule|user|aclfile|replicaof|masterauth|masteruser|daemonize|supervised|cluster-config-file|latency-tracking-info-percentiles)$' \
+  #     --also '^(requirepass|maxmemory|maxmemory-policy|tls-port|tls-cert-file|tls-key-file|tls-ca-cert-file|tls-auth-clients|appendfsync)$' \
+  #     --default 'dir={{ prefix }}/data' --default 'pidfile={{ prefix }}/run/valkey.pid'
+  valkey:
+    variant:
+      - name: stable
+        major_version: 9.1
+        patch_version: 3
+        full_version: 9.1.3
+        commit: 29173b67508b2de4c0f0ed551f3b47cf19fc3ca8
+    license: BSD-3-Clause
+    website: https://valkey.io/
+    depends_on:
+      - {name: openssl, variant: stable}
+    git:
+      repo: https://github.com/valkey-io/valkey
+      ref_template: "{{ full_version }}"
+    upstream:
+      tag_regex: '^(\d+\.\d+\.\d+)$'
+    commands:
+      make: make -j{{ jobs }} BUILD_TLS=yes OPENSSL_PREFIX={{ deps_prefix }} USE_SYSTEMD=no
+      install: make PREFIX={{ prefix }} install
+    runtime:
+      user:
+        name: valkey
+        uid: 1003
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1003:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1003:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1003:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      run:
+        command:
+          - "{{ prefix }}/bin/valkey-server"
+          - "{{ prefix }}/conf/valkey.conf"
+        stop_signal: TERM
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_VALKEY_PORT}"}
+      env:
+        - name: BH_VALKEY_BIND
+          type: string
+          default: 127.0.0.1 -::1
+          cli: --bind
+          description: You will also need to set a password unless you explicitly disable protected
+        - name: BH_VALKEY_PROTECTED_MODE
+          type: enum:yes,no
+          default: "yes"
+          cli: --protected-mode
+          description: By default protected mode is enabled. You should disable it only if you are sure you want clients from other hosts to connect to the server even if no...
+        - name: BH_VALKEY_PORT
+          type: uint
+          default: 6379
+          cli: --port
+          description: 'Accept connections on the specified port, default is 6379 (IANA #815344). If port 0 is specified the server will not listen on a TCP socket.'
+        - name: BH_VALKEY_TCP_BACKLOG
+          type: uint
+          default: 511
+          cli: --tcp-backlog
+          description: In high requests-per-second environments you need a high backlog in order to avoid slow clients connection issues.
+        - name: BH_VALKEY_TIMEOUT
+          type: uint
+          default: 0
+          cli: --timeout
+          description: Close the connection after a client is idle for N seconds (0 to disable)
+        - name: BH_VALKEY_TCP_KEEPALIVE
+          type: uint
+          default: 300
+          cli: --tcp-keepalive
+          description: On Linux, the specified value (in seconds) is the period used to send ACKs. Note that to close the connection the double of the time is needed.
+        - name: BH_VALKEY_TLS_PORT
+          type: uint
+          cli: --tls-port
+          description: By default, TLS/SSL is disabled. To enable it, the "tls-port" configuration directive can be used to define TLS-listening ports. To enable TLS on the
+        - name: BH_VALKEY_TLS_CERT_FILE
+          type: string
+          cli: --tls-cert-file
+          description: Configure a X.509 certificate and private key to use for authenticating the server to connected clients, primaries or cluster peers.
+        - name: BH_VALKEY_TLS_KEY_FILE
+          type: string
+          cli: --tls-key-file
+          description: tls-cert-file valkey.crt
+        - name: BH_VALKEY_TLS_CA_CERT_FILE
+          type: string
+          cli: --tls-ca-cert-file
+          description: Configure a CA certificate(s) bundle or directory to authenticate TLS/SSL clients and peers.
+        - name: BH_VALKEY_TLS_AUTH_CLIENTS
+          type: enum:yes,no
+          cli: --tls-auth-clients
+          description: If "no" is specified, client certificates are not required and not accepted.
+        - name: BH_VALKEY_PIDFILE
+          type: path
+          default: '{{ prefix }}/run/valkey.pid'
+          cli: --pidfile
+          description: Note that on modern Linux systems "/run/valkey.pid" is more conforming and should be used instead.
+        - name: BH_VALKEY_LOGLEVEL
+          type: enum:debug,verbose,notice,warning,nothing
+          default: notice
+          cli: --loglevel
+          description: 'Specify the server verbosity level. This can be one of: debug (a lot of information, useful for development/testing) verbose (many rarely useful info, but not...'
+        - name: BH_VALKEY_LOGFILE
+          type: string
+          cli: --logfile
+          description: Specify the log file name. Also the empty string can be used to force the server to log on the standard output.
+        - name: BH_VALKEY_DATABASES
+          type: uint
+          default: 16
+          cli: --databases
+          description: Set the number of databases. The default database is DB 0, you can select a different one on a per-connection basis using SELECT <dbid> where dbid is a number...
+        - name: BH_VALKEY_ALWAYS_SHOW_LOGO
+          type: enum:yes,no
+          default: "no"
+          cli: --always-show-logo
+          description: However it is possible to force the pre-4.0 behavior and always show a ASCII art logo in startup logs by setting the following option to yes.
+        - name: BH_VALKEY_HIDE_USER_DATA_FROM_LOG
+          type: enum:yes,no
+          default: "yes"
+          cli: --hide-user-data-from-log
+          description: User data, including keys, values, client names, and ACL usernames, can be logged as part of assertions and other error cases.
+        - name: BH_VALKEY_SET_PROC_TITLE
+          type: enum:yes,no
+          default: "yes"
+          cli: --set-proc-title
+          description: By default, the server modifies the process title (as seen in 'top' and 'ps') to provide some runtime information.
+        - name: BH_VALKEY_PROC_TITLE_TEMPLATE
+          type: string
+          default: '{title} {listen-addr} {server-mode}'
+          cli: --proc-title-template
+          description: '{title} Name of process as executed if parent, or type of child process.'
+        - name: BH_VALKEY_LOCALE_COLLATE
+          type: string
+          cli: --locale-collate
+          description: Set the local environment which is used for string comparison operations, and also affect the performance of Lua scripts.
+        - name: BH_VALKEY_STOP_WRITES_ON_BGSAVE_ERROR
+          type: enum:yes,no
+          default: "yes"
+          cli: --stop-writes-on-bgsave-error
+          description: However if you have setup your proper monitoring of the server and persistence, you may want to disable this feature so that the server will continue to work...
+        - name: BH_VALKEY_RDBCOMPRESSION
+          type: enum:yes,no
+          default: "yes"
+          cli: --rdbcompression
+          description: Compress string objects using LZF when dump .rdb databases? By default compression is enabled as it's almost always a win.
+        - name: BH_VALKEY_RDBCHECKSUM
+          type: enum:yes,no
+          default: "yes"
+          cli: --rdbchecksum
+          description: RDB files created with checksum disabled have a checksum of zero that will tell the loading code to skip the check.
+        - name: BH_VALKEY_RDB_VERSION_CHECK
+          type: string
+          default: strict
+          cli: --rdb-version-check
+          description: Valkey can try to load an RDB dump produced by a future version of Valkey.
+        - name: BH_VALKEY_DBFILENAME
+          type: string
+          default: dump.rdb
+          cli: --dbfilename
+          description: The filename where to dump the DB
+        - name: BH_VALKEY_RDB_DEL_SYNC_FILES
+          type: enum:yes,no
+          default: "no"
+          cli: --rdb-del-sync-files
+          description: An alternative (and sometimes better) way to obtain the same effect is to use diskless replication on both primary and replicas instances.
+        - name: BH_VALKEY_DIR
+          type: path
+          default: '{{ prefix }}/data'
+          cli: --dir
+          description: Note that you must specify a directory here, not a file name.
+        - name: BH_VALKEY_REPLICA_SERVE_STALE_DATA
+          type: enum:yes,no
+          default: "yes"
+          cli: --replica-serve-stale-data
+          description: 2) If replica-serve-stale-data is set to 'no' the replica will reply with error "MASTERDOWN Link with MASTER is down and replica-serve-stale-data is set to...
+        - name: BH_VALKEY_REPLICA_READ_ONLY
+          type: enum:yes,no
+          default: "yes"
+          cli: --replica-read-only
+          description: 'Note: read only replicas are not designed to be exposed to untrusted clients on the internet.'
+        - name: BH_VALKEY_REPL_DISKLESS_SYNC
+          type: enum:yes,no
+          default: "yes"
+          cli: --repl-diskless-sync
+          description: With slow disks and fast (large bandwidth) networks, diskless replication works better.
+        - name: BH_VALKEY_REPL_DISKLESS_SYNC_DELAY
+          type: uint
+          default: 5
+          cli: --repl-diskless-sync-delay
+          description: The delay is specified in seconds, and by default is 5 seconds. To disable it entirely just set it to 0 seconds and the transfer will start ASAP.
+        - name: BH_VALKEY_REPL_DISKLESS_SYNC_MAX_REPLICAS
+          type: uint
+          default: 0
+          cli: --repl-diskless-sync-max-replicas
+          description: When diskless replication is enabled with a delay, it is possible to let the replication start before the maximum delay is reached if the maximum number of...
+        - name: BH_VALKEY_REPL_DISKLESS_LOAD
+          type: enum:enabled,disabled
+          default: disabled
+          cli: --repl-diskless-load
+          description: "\"disabled\" - Don't use diskless load (store the rdb file to the disk first) \"swapdb\" - Keep current db contents in RAM while parsing the data directly from the..."
+        - name: BH_VALKEY_DUAL_CHANNEL_REPLICATION_ENABLED
+          type: enum:yes,no
+          default: "no"
+          cli: --dual-channel-replication-enabled
+          description: To enable dual channel replication, both the primary and its replicas should have dual-channel-replication-enabled set to yes.
+        - name: BH_VALKEY_REPL_DISABLE_TCP_NODELAY
+          type: enum:yes,no
+          default: "no"
+          cli: --repl-disable-tcp-nodelay
+          description: By default we optimize for low latency, but in very high traffic conditions or when the primary and replicas are many hops away, turning this to "yes" may be a...
+        - name: BH_VALKEY_REPLICA_PRIORITY
+          type: uint
+          default: 100
+          cli: --replica-priority
+          description: By default the priority is 100.
+        - name: BH_VALKEY_ACLLOG_MAX_LEN
+          type: uint
+          default: 128
+          cli: --acllog-max-len
+          description: The ACL Log tracks failed commands and authentication events associated with ACLs. The ACL Log is useful to troubleshoot failed commands blocked by ACLs.
+        - name: BH_VALKEY_REQUIREPASS
+          type: secret
+          cli: --requirepass
+          description: The requirepass is not compatible with aclfile option and the ACL LOAD command, these will cause requirepass to be ignored.
+        - name: BH_VALKEY_MAXMEMORY
+          type: string
+          cli: --maxmemory
+          description: In short... if you have replicas attached it is suggested that you set a lower limit for maxmemory so that there is some free RAM on the system for replica...
+        - name: BH_VALKEY_MAXMEMORY_POLICY
+          type: string
+          cli: --maxmemory-policy
+          description: 'The default is:'
+        - name: BH_VALKEY_LAZYFREE_LAZY_EVICTION
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-eviction
+        - name: BH_VALKEY_LAZYFREE_LAZY_EXPIRE
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-expire
+        - name: BH_VALKEY_LAZYFREE_LAZY_SERVER_DEL
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-server-del
+        - name: BH_VALKEY_REPLICA_LAZY_FLUSH
+          type: enum:yes,no
+          default: "yes"
+          cli: --replica-lazy-flush
+        - name: BH_VALKEY_LAZYFREE_LAZY_USER_DEL
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-user-del
+        - name: BH_VALKEY_LAZYFREE_LAZY_USER_FLUSH
+          type: enum:yes,no
+          default: "yes"
+          cli: --lazyfree-lazy-user-flush
+        - name: BH_VALKEY_OOM_SCORE_ADJ
+          type: enum:yes,no
+          default: "no"
+          cli: --oom-score-adj
+          description: "no: Don't make changes to oom-score-adj (default). yes: Alias to \"relative\" see below."
+        - name: BH_VALKEY_OOM_SCORE_ADJ_VALUES
+          type: string
+          default: 0 200 800
+          cli: --oom-score-adj-values
+          description: Unprivileged processes (not root, and without CAP_SYS_RESOURCE capabilities) can freely increase their value, but not decrease it below its initial settings....
+        - name: BH_VALKEY_DISABLE_THP
+          type: enum:yes,no
+          default: "yes"
+          cli: --disable-thp
+        - name: BH_VALKEY_APPENDONLY
+          type: enum:yes,no
+          default: "no"
+          cli: --appendonly
+        - name: BH_VALKEY_APPENDFILENAME
+          type: string
+          default: appendonly.aof
+          cli: --appendfilename
+        - name: BH_VALKEY_APPENDDIRNAME
+          type: string
+          default: appendonlydir
+          cli: --appenddirname
+        - name: BH_VALKEY_APPENDFSYNC
+          type: string
+          default: everysec
+          cli: --appendfsync
+        - name: BH_VALKEY_NO_APPENDFSYNC_ON_REWRITE
+          type: enum:yes,no
+          default: "no"
+          cli: --no-appendfsync-on-rewrite
+        - name: BH_VALKEY_AUTO_AOF_REWRITE_PERCENTAGE
+          type: uint
+          default: 100
+          cli: --auto-aof-rewrite-percentage
+        - name: BH_VALKEY_AUTO_AOF_REWRITE_MIN_SIZE
+          type: string
+          default: 64mb
+          cli: --auto-aof-rewrite-min-size
+        - name: BH_VALKEY_AOF_LOAD_TRUNCATED
+          type: enum:yes,no
+          default: "yes"
+          cli: --aof-load-truncated
+          description: Note that if the AOF file will be found to be corrupted in the middle the server will still exit with an error.
+        - name: BH_VALKEY_AOF_USE_RDB_PREAMBLE
+          type: enum:yes,no
+          default: "yes"
+          cli: --aof-use-rdb-preamble
+          description: The server can create append-only base files in either RDB or AOF formats.
+        - name: BH_VALKEY_AOF_TIMESTAMP_ENABLED
+          type: enum:yes,no
+          default: "no"
+          cli: --aof-timestamp-enabled
+          description: The server supports recording timestamp annotations in the AOF to support restoring the data from a specific point-in-time.
+        - name: BH_VALKEY_COMMANDLOG_EXECUTION_SLOWER_THAN
+          type: uint
+          default: 10000
+          cli: --commandlog-execution-slower-than
+          description: The following time is expressed in microseconds, so 1000000 is equivalent to 1 second.
+        - name: BH_VALKEY_COMMANDLOG_SLOW_EXECUTION_MAX_LEN
+          type: uint
+          default: 128
+          cli: --commandlog-slow-execution-max-len
+          description: Record the number of commands. There is no limit to this length. Just be aware that it will consume memory.
+        - name: BH_VALKEY_COMMANDLOG_REQUEST_LARGER_THAN
+          type: uint
+          default: 1048576
+          cli: --commandlog-request-larger-than
+          description: The threshold is measured in bytes. Note that -1 disables the large request log, while 0 forces logging of every command.
+        - name: BH_VALKEY_COMMANDLOG_LARGE_REQUEST_MAX_LEN
+          type: uint
+          default: 128
+          cli: --commandlog-large-request-max-len
+          description: Record the number of commands. There is no limit to this length. Just be aware that it will consume memory.
+        - name: BH_VALKEY_COMMANDLOG_REPLY_LARGER_THAN
+          type: uint
+          default: 1048576
+          cli: --commandlog-reply-larger-than
+          description: The threshold is measured in bytes. Note that -1 disables the large reply log, while 0 forces logging of every command.
+        - name: BH_VALKEY_COMMANDLOG_LARGE_REPLY_MAX_LEN
+          type: uint
+          default: 128
+          cli: --commandlog-large-reply-max-len
+          description: Record the number of commands. There is no limit to this length. Just be aware that it will consume memory.
+        - name: BH_VALKEY_LATENCY_MONITOR_THRESHOLD
+          type: uint
+          default: 0
+          cli: --latency-monitor-threshold
+          description: By default latency monitoring is disabled since it is mostly not needed if you don't have latency issues, and collecting data has a performance impact, that...
+        - name: BH_VALKEY_NOTIFY_KEYSPACE_EVENTS
+          type: string
+          cli: --notify-keyspace-events
+          description: By default all notifications are disabled because most users don't need this feature and the feature has some overhead.
+        - name: BH_VALKEY_HASH_MAX_LISTPACK_ENTRIES
+          type: uint
+          default: 512
+          cli: --hash-max-listpack-entries
+          description: Hashes use listpacks when they have a small number of entries, and the biggest field or value does not exceed the following limits.
+        - name: BH_VALKEY_HASH_MAX_LISTPACK_VALUE
+          type: uint
+          default: 64
+          cli: --hash-max-listpack-value
+        - name: BH_VALKEY_LIST_MAX_LISTPACK_SIZE
+          type: int
+          default: -2
+          cli: --list-max-listpack-size
+          description: Lists are stored as quicklists, where each internal node is a listpack.
+        - name: BH_VALKEY_LIST_COMPRESS_DEPTH
+          type: uint
+          default: 0
+          cli: --list-compress-depth
+          description: Lists may also be compressed. Compress depth is the number of quicklist nodes from *each* side of the list to *exclude* from compression.
+        - name: BH_VALKEY_SET_MAX_INTSET_ENTRIES
+          type: uint
+          default: 512
+          cli: --set-max-intset-entries
+          description: Sets containing only integers can use intset encoding. The following setting limits the largest set that can use intset encoding.
+        - name: BH_VALKEY_SET_MAX_LISTPACK_ENTRIES
+          type: uint
+          default: 128
+          cli: --set-max-listpack-entries
+          description: Sets containing non-integer values use listpacks when they have a small number of entries, and the biggest member does not exceed the following
+        - name: BH_VALKEY_SET_MAX_LISTPACK_VALUE
+          type: uint
+          default: 64
+          cli: --set-max-listpack-value
+        - name: BH_VALKEY_ZSET_MAX_LISTPACK_ENTRIES
+          type: uint
+          default: 128
+          cli: --zset-max-listpack-entries
+          description: 'Sorted sets use listpacks when they have a small number of entries, and the biggest member does not exceed the following limits:'
+        - name: BH_VALKEY_ZSET_MAX_LISTPACK_VALUE
+          type: uint
+          default: 64
+          cli: --zset-max-listpack-value
+        - name: BH_VALKEY_HLL_SPARSE_MAX_BYTES
+          type: uint
+          default: 3000
+          cli: --hll-sparse-max-bytes
+          description: The suggested value is ~ 3000 in order to have the benefits of the space efficient encoding without slowing down too much PFADD, which is O(N) with the sparse...
+        - name: BH_VALKEY_STREAM_NODE_MAX_BYTES
+          type: uint
+          default: 4096
+          cli: --stream-node-max-bytes
+          description: Streams macro node max size / items. The stream data structure is a radix tree of big nodes that encode multiple items inside.
+        - name: BH_VALKEY_STREAM_NODE_MAX_ENTRIES
+          type: uint
+          default: 100
+          cli: --stream-node-max-entries
+        - name: BH_VALKEY_ACTIVEREHASHING
+          type: enum:yes,no
+          default: "yes"
+          cli: --activerehashing
+          description: Active rehashing runs as a background task.
+        - name: BH_VALKEY_HZ
+          type: uint
+          default: 10
+          cli: --hz
+          description: The range is between 1 and 500, however a value over 100 is usually not a good idea.
+        - name: BH_VALKEY_AOF_REWRITE_INCREMENTAL_FSYNC
+          type: enum:yes,no
+          default: "yes"
+          cli: --aof-rewrite-incremental-fsync
+          description: When a child rewrites the AOF file, if the following option is enabled the file will be fsync-ed every 4 MB of data generated.
+        - name: BH_VALKEY_RDB_SAVE_INCREMENTAL_FSYNC
+          type: enum:yes,no
+          default: "yes"
+          cli: --rdb-save-incremental-fsync
+          description: When the server saves RDB file, if the following option is enabled the file will be fsync-ed every 4 MB of data generated.
+        - name: BH_VALKEY_JEMALLOC_BG_THREAD
+          type: enum:yes,no
+          default: "yes"
+          cli: --jemalloc-bg-thread
+          description: Jemalloc background thread for purging will be enabled by default
+      templates:
+        - src: valkey.conf.tmpl
+          dest: '{{ prefix }}/conf/valkey.conf'
+          mode: '0640'
+    tags:
+      - application
+
+  # Binary repack of the upstream release (a static Go binary: the same file runs on glibc and musl). The two settings of the
+  # configuration file come from `autobuilder.py scaffold --format yaml`; the command-line flags that define where it listens
+  # and where it stores data are declared by hand (scaffold reads configuration files, not `--help` output).
+  prometheus:
+    variant:
+      - name: stable
+        major_version: 3.15
+        patch_version: 1
+        full_version: 3.15.1
+        sha256:
+          amd64: 6a726885328ad9efebbf36e876ce2fb6225468a71fd1e7ce3ba666d5f4d97a84
+          arm64: ceb6d21493c37ca0b4513b147642797c68cf39a0f50a444d50e1e80c74f21b26
+    arch_map: {amd64: amd64, arm64: arm64}
+    license: Apache-2.0
+    website: https://prometheus.io/
+    git:
+      repo: https://github.com/prometheus/prometheus
+      release_download_url_template: "{{ git.repo }}/releases/download/v{{ full_version }}/{{ name }}-{{ full_version }}.linux-{{ arch_name }}.tar.gz"
+    upstream:
+      tag_regex: '^v(\d+\.\d+\.\d+)$'
+    commands:
+      install: |
+        mkdir -p {{ prefix }}/bin
+        install -m 0755 prometheus promtool {{ prefix }}/bin/
+    runtime:
+      user:
+        name: prometheus
+        uid: 1004
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1004:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1004:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      run:
+        command:
+          - "{{ prefix }}/bin/prometheus"
+          - --config.file={{ prefix }}/conf/prometheus.yml
+          - --storage.tsdb.path=${BH_PROMETHEUS_DATA_DIR}
+          - --storage.tsdb.retention.time=${BH_PROMETHEUS_RETENTION}
+          - --web.listen-address=${BH_PROMETHEUS_HOST}:${BH_PROMETHEUS_PORT}
+        stop_signal: TERM
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_PROMETHEUS_PORT}"}
+      env:
+        - {name: BH_PROMETHEUS_HOST, type: string, default: 0.0.0.0, cli: --host, description: "Interface the web UI and API listen on"}
+        - {name: BH_PROMETHEUS_PORT, type: port, default: 9090, cli: --port, description: "Port of the web UI and API"}
+        - {name: BH_PROMETHEUS_RETENTION, type: string, default: 15d, cli: --retention, description: "How long samples are kept (--storage.tsdb.retention.time)"}
+        - {name: BH_PROMETHEUS_DATA_DIR, type: path, default: "{{ prefix }}/data", cli: --data-dir, description: "Time series database directory (mount a volume here)"}
+        - name: BH_PROMETHEUS_GLOBAL_SCRAPE_INTERVAL
+          type: string
+          default: 15s
+          file_key: global.scrape_interval
+          cli: --global-scrape-interval
+          description: Set the scrape interval to every 15 seconds. Default is every 1 minute.
+        - name: BH_PROMETHEUS_GLOBAL_EVALUATION_INTERVAL
+          type: string
+          default: 15s
+          file_key: global.evaluation_interval
+          cli: --global-evaluation-interval
+          description: Evaluate rules every 15 seconds. The default is every 1 minute.
+      templates:
+        - src: prometheus.yml.tmpl
+          dest: '{{ prefix }}/conf/prometheus.yml'
+          mode: '0640'
+    tags:
+      - application
+
+  # Built from a git tag pinned by commit. runtime.env and the template come from `autobuilder.py scaffold` run on the
+  # mosquitto.conf the project ships (every setting there is a commented default, hence `--commented strict`); the four
+  # `--default` values below are the only choices made by hand. Needs cJSON; OpenSSL is linked statically (hence -fPIC in
+  # its recipe and the explicit -lssl -lcrypto after the common library: static archives are order sensitive).
+  #   autobuilder.py scaffold --package mosquitto --from mosquitto.conf --commented strict --write \
+  #     --exclude '^(user|include_dir|pid_file|plugin.*|persistence_file)$' \
+  #     --default listener=1883 --default persistence=true --default persistence_location='{{ prefix }}/data/' \
+  #     --default log_dest=stdout
+  mosquitto:
+    variant:
+      - name: stable
+        major_version: 2.1
+        patch_version: 2
+        full_version: 2.1.2
+        commit: 99fa50f30e325609394c324c8ff71cfbbe95d8ab
+    license: EPL-2.0
+    website: https://mosquitto.org/
+    depends_on:
+      - {name: openssl, variant: stable}
+      - cjson
+    git:
+      repo: https://github.com/eclipse-mosquitto/mosquitto
+      ref_template: "v{{ full_version }}"
+    upstream:
+      tag_regex: '^v(\d+\.\d+\.\d+)$'
+    env:
+      # the clients load libmosquitto.so from the prefix: no LD_LIBRARY_PATH needed (and no system library path assumed)
+      LDFLAGS: "-L{{ deps_prefix }}/lib -L{{ deps_prefix }}/lib64 -Wl,-rpath,{{ prefix }}/lib"
+    commands:
+      make: |
+        make -j{{ jobs }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no \
+          LIBMOSQ_COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto'
+      install: |
+        make install prefix={{ prefix }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no \
+          LIBMOSQ_COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto'
+    runtime:
+      user:
+        name: mosquitto
+        uid: 1005
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1005:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1005:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1005:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      run:
+        command:
+          - "{{ prefix }}/sbin/mosquitto"
+          - -c
+          - "{{ prefix }}/conf/mosquitto.conf"
+        stop_signal: TERM
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_MOSQUITTO_HEALTH_PORT}"}
+      env:
+        - {name: BH_MOSQUITTO_HEALTH_PORT, type: port, default: 1883, cli: --health-port, description: "Port the health check probes: keep it equal to the (first) listener"}
+        - name: BH_MOSQUITTO_PER_LISTENER_SETTINGS
+          type: enum:true,false
+          cli: --per-listener-settings
+          description: The default behaviour is for this to be set to false, which maintains the setting behaviour from previous versions of mosquitto.
+        - name: BH_MOSQUITTO_ALLOW_ZERO_LENGTH_CLIENTID
+          type: enum:true,false
+          cli: --allow-zero-length-clientid
+          description: This option controls whether a client is allowed to connect with a zero length client id or not.
+        - name: BH_MOSQUITTO_AUTO_ID_PREFIX
+          type: string
+          cli: --auto-id-prefix
+          description: If allow_zero_length_clientid is true, this option allows you to set a prefix to automatically generated client ids to aid visibility in logs.
+        - name: BH_MOSQUITTO_CHECK_RETAIN_SOURCE
+          type: enum:true,false
+          cli: --check-retain-source
+          description: This option affects the scenario when a client subscribes to a topic that has retained messages.
+        - name: BH_MOSQUITTO_GLOBAL_MAX_CLIENTS
+          type: int
+          cli: --global-max-clients
+          description: See also the global_max_connections setting, and the max_connections setting, which applies to listeners.
+        - name: BH_MOSQUITTO_GLOBAL_MAX_CONNECTIONS
+          type: int
+          cli: --global-max-connections
+          description: The maximum number of currently connected clients to allow across the whole See also the global_max_clients and max_connections settings.
+        - name: BH_MOSQUITTO_MAX_INFLIGHT_BYTES
+          type: uint
+          cli: --max-inflight-bytes
+          description: QoS 1 and 2 messages will be allowed inflight per client until this limit is exceeded. Defaults to 0. (No maximum) See also max_inflight_messages
+        - name: BH_MOSQUITTO_MAX_INFLIGHT_MESSAGES
+          type: uint
+          cli: --max-inflight-messages
+          description: The maximum number of QoS 1 and 2 messages currently inflight per This includes messages that are partway through handshakes and those that are being retried....
+        - name: BH_MOSQUITTO_MAX_KEEPALIVE
+          type: uint
+          cli: --max-keepalive
+          description: For MQTT v3.1.1 and v3.1 clients, there is no mechanism to tell the client what keepalive value they should use.
+        - name: BH_MOSQUITTO_MAX_PACKET_SIZE
+          type: uint
+          cli: --max-packet-size
+          description: For MQTT v5 clients, it is possible to have the server send a "maximum packet size" value that will instruct the client it will not accept MQTT packets with...
+        - name: BH_MOSQUITTO_MAX_QUEUED_BYTES
+          type: uint
+          cli: --max-queued-bytes
+          description: QoS 1 and 2 messages above those currently in-flight will be queued per client until this limit is exceeded. Defaults to 0.
+        - name: BH_MOSQUITTO_MAX_QOS
+          type: uint
+          cli: --max-qos
+          description: Set the maximum QoS supported. Clients publishing at a QoS higher than specified here will be disconnected.
+        - name: BH_MOSQUITTO_MAX_QUEUED_MESSAGES
+          type: uint
+          cli: --max-queued-messages
+          description: The maximum number of QoS 1 and 2 messages to hold in a queue per client above those that are currently in-flight. Defaults to 1000.
+        - name: BH_MOSQUITTO_MEMORY_LIMIT
+          type: uint
+          cli: --memory-limit
+          description: This option sets the maximum number of heap memory bytes that the broker will allocate, and hence sets a hard limit on memory use by the broker.
+        - name: BH_MOSQUITTO_MESSAGE_SIZE_LIMIT
+          type: uint
+          cli: --message-size-limit
+          description: This option sets the maximum publish payload size that the broker will allow. Received messages that exceed this size will not be accepted by the broker.
+        - name: BH_MOSQUITTO_PERSISTENT_CLIENT_EXPIRATION
+          type: string
+          cli: --persistent-client-expiration
+          description: The default if not set is to never expire persistent clients.
+        - name: BH_MOSQUITTO_QUEUE_QOS0_MESSAGES
+          type: enum:true,false
+          cli: --queue-qos0-messages
+          description: Set to true to queue messages with QoS 0 when a persistent client is disconnected. These messages are included in the limit imposed by Defaults to false.
+        - name: BH_MOSQUITTO_RETAIN_AVAILABLE
+          type: enum:true,false
+          cli: --retain-available
+          description: Set to false to disable retained message support. If a client publishes a message with the retain bit set, it will be disconnected if this is set to
+        - name: BH_MOSQUITTO_SET_TCP_NODELAY
+          type: enum:true,false
+          cli: --set-tcp-nodelay
+          description: Disable Nagle's algorithm on client sockets.
+        - name: BH_MOSQUITTO_SYS_INTERVAL
+          type: uint
+          cli: --sys-interval
+          description: Time in seconds between updates of the $SYS tree. Set to 0 to disable the publishing of the $SYS tree.
+        - name: BH_MOSQUITTO_UPGRADE_OUTGOING_QOS
+          type: enum:true,false
+          cli: --upgrade-outgoing-qos
+          description: The MQTT specification requires that the QoS of a message delivered to a subscriber is never upgraded to match the QoS of the subscription.
+        - name: BH_MOSQUITTO_LISTENER
+          type: string
+          default: "1883"
+          cli: --listener
+          description: listener port-number [ip address/host name/unix socket path]
+        - name: BH_MOSQUITTO_SOCKET_DOMAIN
+          type: string
+          cli: --socket-domain
+          description: Set to `ipv4` to force the listener to only use IPv4, or set to `ipv6` to force the listener to only use IPv6.
+        - name: BH_MOSQUITTO_BIND_INTERFACE
+          type: string
+          cli: --bind-interface
+          description: 'Example: bind_interface eth0'
+        - name: BH_MOSQUITTO_HTTP_DIR
+          type: string
+          cli: --http-dir
+          description: When a listener is using the websockets protocol, it is possible to serve http data as well.
+        - name: BH_MOSQUITTO_MAX_CONNECTIONS
+          type: int
+          cli: --max-connections
+          description: The maximum number of client connections to allow. This is a per listener setting.
+        - name: BH_MOSQUITTO_MOUNT_POINT
+          type: string
+          cli: --mount-point
+          description: The listener can be restricted to operating within a topic hierarchy using the mount_point option.
+        - name: BH_MOSQUITTO_PROTOCOL
+          type: string
+          cli: --protocol
+          description: 'mqtt: A standard MQTT based listener websockets: MQTT tunnelled over WebSockets.'
+        - name: BH_MOSQUITTO_ACCEPT_PROTOCOL_VERSIONS
+          type: string
+          cli: --accept-protocol-versions
+          description: Defaults to allowing all versions.
+        - name: BH_MOSQUITTO_LISTENER_ALLOW_ANONYMOUS
+          type: string
+          cli: --listener-allow-anonymous
+          description: If you wish to allow unauthenticated connections for a specific listener, use the listener_allow_anonymous option set to true.
+        - name: BH_MOSQUITTO_LISTENER_AUTO_ID_PREFIX
+          type: string
+          cli: --listener-auto-id-prefix
+          description: This option allows you to set a prefix to automatically generated client ids (i.e.
+        - name: BH_MOSQUITTO_USE_USERNAME_AS_CLIENTID
+          type: string
+          cli: --use-username-as-clientid
+          description: Set use_username_as_clientid to true to replace the clientid that a client connected with with its username.
+        - name: BH_MOSQUITTO_PACKET_BUFFER_SIZE
+          type: string
+          cli: --packet-buffer-size
+          description: This also operates as the option that sets the size of the buffer used by websockets when reading the initial header.
+        - name: BH_MOSQUITTO_WEBSOCKETS_ORIGIN
+          type: string
+          cli: --websockets-origin
+          description: Enforce origin checking for websockets connections.
+        - name: BH_MOSQUITTO_CERTFILE
+          type: string
+          cli: --certfile
+          description: Path to the PEM encoded server certificate.
+        - name: BH_MOSQUITTO_KEYFILE
+          type: string
+          cli: --keyfile
+          description: Path to the PEM encoded keyfile.
+        - name: BH_MOSQUITTO_TLS_VERSION
+          type: string
+          cli: --tls-version
+          description: Configure the minimum version of the TLS protocol to be used for this listener. Possible values are tlsv1.3 and tlsv1.2.
+        - name: BH_MOSQUITTO_CIPHERS
+          type: string
+          cli: --ciphers
+          description: If you wish to control which encryption ciphers are used, use the ciphers option.
+        - name: BH_MOSQUITTO_CIPHERS_TLS1_3
+          type: string
+          cli: --ciphers-tls1-3
+          description: Choose which TLS v1.3 ciphersuites are used for this listener. Defaults to "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256"
+        - name: BH_MOSQUITTO_CRLFILE
+          type: string
+          cli: --crlfile
+          description: If you have require_certificate set to true, you can create a certificate revocation list file to revoke access to particular client certificates.
+        - name: BH_MOSQUITTO_DHPARAMFILE
+          type: string
+          cli: --dhparamfile
+          description: To allow the use of ephemeral DH key exchange, which provides forward security, the listener must load DH parameters.
+        - name: BH_MOSQUITTO_REQUIRE_CERTIFICATE
+          type: enum:true,false
+          cli: --require-certificate
+          description: By default an TLS enabled listener will operate in a similar fashion to a https enabled web server, in that the server has a certificate signed by a CA and the...
+        - name: BH_MOSQUITTO_DISABLE_CLIENT_CERT_DATE_CHECKS
+          type: enum:true,false
+          cli: --disable-client-cert-date-checks
+          description: If set true, disable_client_cert_date_checks will change the certificate verification behaviour to allow client certificates that are expired or are not yet...
+        - name: BH_MOSQUITTO_CAFILE
+          type: string
+          cli: --cafile
+          description: cafile and capath define methods of accessing the PEM encoded Certificate Authority certificates that will be considered trusted when checking incoming client...
+        - name: BH_MOSQUITTO_CAPATH
+          type: string
+          cli: --capath
+          description: cafile and capath define methods of accessing the PEM encoded Certificate Authority certificates that will be considered trusted when checking incoming client...
+        - name: BH_MOSQUITTO_USE_IDENTITY_AS_USERNAME
+          type: enum:true,false
+          cli: --use-identity-as-username
+          description: If require_certificate is true, you may set use_identity_as_username to true to use the CN value from the client certificate as a username.
+        - name: BH_MOSQUITTO_PSK_HINT
+          type: string
+          cli: --psk-hint
+          description: The psk_hint option enables pre-shared-key support for this listener and also acts as an identifier for this listener.
+        - name: BH_MOSQUITTO_AUTOSAVE_INTERVAL
+          type: uint
+          cli: --autosave-interval
+          description: If persistence is enabled, save the in-memory database to disk every autosave_interval seconds.
+        - name: BH_MOSQUITTO_AUTOSAVE_ON_CHANGES
+          type: enum:true,false
+          cli: --autosave-on-changes
+          description: If true, mosquitto will count the number of subscription changes, retained messages received and queued messages and if the total exceeds autosave_interval...
+        - name: BH_MOSQUITTO_PERSISTENCE
+          type: enum:true,false
+          default: "true"
+          cli: --persistence
+          description: Save persistent message data to disk (true/false).
+        - name: BH_MOSQUITTO_PERSISTENCE_LOCATION
+          type: string
+          default: '{{ prefix }}/data/'
+          cli: --persistence-location
+          description: This can also be used by plugins using the mosquitto_persistence_location() function.
+        - name: BH_MOSQUITTO_LOG_DEST
+          type: string
+          default: stdout
+          cli: --log-dest
+          description: Note that if the broker is running as a Windows service it will default to "log_dest none" and neither stdout nor stderr logging is available.
+        - name: BH_MOSQUITTO_LOG_TYPE
+          type: string
+          cli: --log-type
+          description: Types of messages to log. Use multiple log_type lines for logging multiple types of messages.
+        - name: BH_MOSQUITTO_CONNECTION_MESSAGES
+          type: enum:true,false
+          cli: --connection-messages
+          description: If set to true, client connection and disconnection messages will be included in the log.
+        - name: BH_MOSQUITTO_LOG_FACILITY
+          type: string
+          cli: --log-facility
+          description: If using syslog logging (not on Windows), messages will be logged to the "daemon" facility by default.
+        - name: BH_MOSQUITTO_LOG_TIMESTAMP
+          type: enum:true,false
+          cli: --log-timestamp
+          description: If set to true, add a timestamp value to each log message.
+        - name: BH_MOSQUITTO_LOG_TIMESTAMP_FORMAT
+          type: string
+          cli: --log-timestamp-format
+          description: Set the format of the log timestamp. If left unset, this is the number of seconds since the Unix epoch.
+        - name: BH_MOSQUITTO_WEBSOCKETS_LOG_LEVEL
+          type: uint
+          cli: --websockets-log-level
+          description: Change the websockets logging level. This is a global option, it is not possible to set per listener.
+        - name: BH_MOSQUITTO_CLIENTID_PREFIXES
+          type: string
+          cli: --clientid-prefixes
+          description: If set, only clients that have a matching prefix on their clientid will be allowed to connect to the broker. By default, all clients may connect.
+        - name: BH_MOSQUITTO_ALLOW_ANONYMOUS
+          type: enum:true,false
+          cli: --allow-anonymous
+          description: Defaults to false, unless there are no listeners defined in the configuration file, in which case it is set to true, but connections are only allowed from the...
+        - name: BH_MOSQUITTO_PASSWORD_FILE
+          type: secret
+          cli: --password-file
+          description: See the TLS client require_certificate and use_identity_as_username options for alternative authentication options.
+        - name: BH_MOSQUITTO_PSK_FILE
+          type: string
+          cli: --psk-file
+          description: Access may also be controlled using a pre-shared-key file. This requires TLS-PSK support and a listener configured to use it.
+        - name: BH_MOSQUITTO_ACL_FILE
+          type: string
+          cli: --acl-file
+          description: If an plugin is used as well as acl_file, the plugin check will be made first.
+        - name: BH_MOSQUITTO_GLOBAL_PLUGIN
+          type: string
+          cli: --global-plugin
+          description: If you set `per_listener_settings false`, then `global_plugin` behaves identically to `plugin`.
+        - name: BH_MOSQUITTO_CONNECTION
+          type: string
+          cli: --connection
+          description: If you are using bridges with cleansession set to false (the default), then you may get unexpected behaviour from incoming topics if you change what topics you...
+        - name: BH_MOSQUITTO_ADDRESS
+          type: string
+          cli: --address
+          description: If you are using bridges with cleansession set to false (the default), then you may get unexpected behaviour from incoming topics if you change what topics you...
+        - name: BH_MOSQUITTO_TOPIC
+          type: string
+          cli: --topic
+          description: If you are using bridges with cleansession set to false (the default), then you may get unexpected behaviour from incoming topics if you change what topics you...
+        - name: BH_MOSQUITTO_BRIDGE_BIND_ADDRESS
+          type: string
+          cli: --bridge-bind-address
+          description: If you need to have the bridge connect over a particular network interface, use bridge_bind_address to tell the bridge which local IP address the socket should...
+        - name: BH_MOSQUITTO_BRIDGE_ATTEMPT_UNSUBSCRIBE
+          type: enum:true,false
+          cli: --bridge-attempt-unsubscribe
+          description: If a bridge has topics that have "out" direction, the default behaviour is to send an unsubscribe request to the remote broker on that topic.
+        - name: BH_MOSQUITTO_BRIDGE_PROTOCOL_VERSION
+          type: string
+          cli: --bridge-protocol-version
+          description: Set the version of the MQTT protocol to use with for this bridge. Can be one of mqttv50, mqttv311 or mqttv31. Defaults to mqttv311.
+        - name: BH_MOSQUITTO_BRIDGE_RECEIVE_MAXIMUM
+          type: uint
+          cli: --bridge-receive-maximum
+          description: If the bridge is using MQTT v5.0 then use bridge_receive_maximum to limit the number QoS 1 or 2 messages that can be in-flight at once.
+        - name: BH_MOSQUITTO_CLEANSESSION
+          type: enum:true,false
+          cli: --cleansession
+          description: Set the clean session variable for this bridge.
+        - name: BH_MOSQUITTO_BRIDGE_SESSION_EXPIRY_INTERVAL
+          type: uint
+          cli: --bridge-session-expiry-interval
+          description: If the bridge is using MQTT v5.0 then use bridge_session_expiry_interval to set the session expiry interval.
+        - name: BH_MOSQUITTO_IDLE_TIMEOUT
+          type: uint
+          cli: --idle-timeout
+          description: Set the amount of time a bridge using the lazy start type must be idle before it will be stopped. Defaults to 60 seconds.
+        - name: BH_MOSQUITTO_KEEPALIVE_INTERVAL
+          type: uint
+          cli: --keepalive-interval
+          description: Set the MQTT keepalive interval (PING) for this bridge connection, in
+        - name: BH_MOSQUITTO_BRIDGE_TCP_KEEPALIVE
+          type: string
+          cli: --bridge-tcp-keepalive
+          description: Set TCP keepalive parameters for this bridge connection. Disabled by default.
+        - name: BH_MOSQUITTO_BRIDGE_TCP_USER_TIMEOUT
+          type: string
+          cli: --bridge-tcp-user-timeout
+          description: Change the maximum amount of time (in milliseconds) that transmitted data may remain unacknowledged at TCP level.
+        - name: BH_MOSQUITTO_LOCAL_CLIENTID
+          type: string
+          cli: --local-clientid
+          description: Set the clientid to use on the local broker. If not defined, this defaults to 'local.<clientid>'.
+        - name: BH_MOSQUITTO_NOTIFICATIONS
+          type: enum:true,false
+          cli: --notifications
+          description: If set to true, publish notification messages to the local and remote brokers giving information about the state of the bridge connection.
+        - name: BH_MOSQUITTO_NOTIFICATIONS_LOCAL_ONLY
+          type: enum:true,false
+          cli: --notifications-local-only
+          description: If set to true, only publish notification messages to the local broker giving information about the state of the bridge connection. Defaults to false.
+        - name: BH_MOSQUITTO_NOTIFICATION_TOPIC
+          type: string
+          cli: --notification-topic
+          description: Choose the topic on which notification messages for this bridge are published.
+        - name: BH_MOSQUITTO_REMOTE_CLIENTID
+          type: string
+          cli: --remote-clientid
+          description: Set the client id to use on the remote end of this bridge connection.
+        - name: BH_MOSQUITTO_REMOTE_PASSWORD
+          type: secret
+          cli: --remote-password
+          description: Set the password to use when connecting to a broker that requires authentication. This option is only used if remote_username is also set.
+        - name: BH_MOSQUITTO_REMOTE_USERNAME
+          type: string
+          cli: --remote-username
+          description: Set the username to use when connecting to a broker that requires This replaces the old "username" option to avoid confusion.
+        - name: BH_MOSQUITTO_RESTART_TIMEOUT
+          type: string
+          cli: --restart-timeout
+          description: Defaults to jitter with a base of 5 and cap of 30
+        - name: BH_MOSQUITTO_ROUND_ROBIN
+          type: enum:true,false
+          cli: --round-robin
+          description: If the bridge has more than one address given in the address/addresses configuration, the round_robin option defines the behaviour of the bridge on a failure...
+        - name: BH_MOSQUITTO_START_TYPE
+          type: string
+          cli: --start-type
+          description: A bridge using the "once" start type will be started automatically when the broker starts but will not be restarted if the connection fails.
+        - name: BH_MOSQUITTO_THRESHOLD
+          type: uint
+          cli: --threshold
+          description: Set the number of messages that need to be queued for a bridge with lazy start type to be restarted. Defaults to 10 messages.
+        - name: BH_MOSQUITTO_TRY_PRIVATE
+          type: enum:true,false
+          cli: --try-private
+          description: If try_private is set to true, the bridge will attempt to indicate to the remote broker that it is a bridge not an ordinary client.
+        - name: BH_MOSQUITTO_BRIDGE_OUTGOING_RETAIN
+          type: enum:true,false
+          cli: --bridge-outgoing-retain
+          description: Some MQTT brokers do not allow retained messages.
+        - name: BH_MOSQUITTO_BRIDGE_MAX_PACKET_SIZE
+          type: uint
+          cli: --bridge-max-packet-size
+          description: If you wish to restrict the size of messages sent to a remote bridge, use the bridge_max_packet_size option.
+        - name: BH_MOSQUITTO_BRIDGE_MAX_TOPIC_ALIAS
+          type: uint
+          cli: --bridge-max-topic-alias
+          description: If the bridge is using MQTT v5, this option sets the maximum number of topic aliases that the bridge will allow the remote broker to configure.
+        - name: BH_MOSQUITTO_BRIDGE_RELOAD_TYPE
+          type: string
+          cli: --bridge-reload-type
+          description: immediate forces a reconnection and so uses the new configuration straight
+        - name: BH_MOSQUITTO_MAX_TOPIC_ALIAS_BROKER
+          type: uint
+          cli: --max-topic-alias-broker
+          description: Defaults to 10. Maximum of 65535. Set to 0 to disable broker to client topic aliases completely.
+        - name: BH_MOSQUITTO_MAX_TOPIC_ALIAS
+          type: uint
+          cli: --max-topic-alias
+          description: The max_topic_alias option sets the maximum number topic aliases that an MQTT v5 client is allowed to create. This option applies per listener.
+        - name: BH_MOSQUITTO_BRIDGE_CAFILE
+          type: string
+          cli: --bridge-cafile
+          description: Use bridge_cafile or bridge_capath to explicitly choose which certificates to trust for this bridge.
+        - name: BH_MOSQUITTO_BRIDGE_CAPATH
+          type: string
+          cli: --bridge-capath
+          description: Use bridge_cafile or bridge_capath to explicitly choose which certificates to trust for this bridge.
+        - name: BH_MOSQUITTO_BRIDGE_TLS_USE_OS_CERTS
+          type: enum:true,false
+          cli: --bridge-tls-use-os-certs
+          description: Set bridge_tls_use_os_certs to true (default is false) to configure this bridge to use the default certificates as configured in openssl.
+        - name: BH_MOSQUITTO_BRIDGE_ALPN
+          type: string
+          cli: --bridge-alpn
+          description: If the remote broker has more than one protocol available on its port, e.g.
+        - name: BH_MOSQUITTO_BRIDGE_REQUIRE_OCSP
+          type: enum:true,false
+          cli: --bridge-require-ocsp
+          description: Require the use of Online Certificate Status Protocol (OCSP) for this bridge
+        - name: BH_MOSQUITTO_BRIDGE_INSECURE
+          type: enum:true,false
+          cli: --bridge-insecure
+          description: When using certificate based encryption, bridge_insecure disables verification of the server hostname in the server certificate.
+        - name: BH_MOSQUITTO_BRIDGE_CERTFILE
+          type: string
+          cli: --bridge-certfile
+          description: Path to the PEM encoded client certificate, if required by the remote broker.
+        - name: BH_MOSQUITTO_BRIDGE_KEYFILE
+          type: string
+          cli: --bridge-keyfile
+          description: Path to the PEM encoded client private key, if required by the remote broker.
+        - name: BH_MOSQUITTO_BRIDGE_TLS_VERSION
+          type: string
+          cli: --bridge-tls-version
+          description: Configure the version of the TLS protocol to be used for this bridge. Possible values are tlsv1.3 and tlsv1.2. Defaults to tlsv1.2.
+        - name: BH_MOSQUITTO_BRIDGE_CIPHERS
+          type: string
+          cli: --bridge-ciphers
+          description: If you wish to control which encryption ciphers are used, use the ciphers option.
+        - name: BH_MOSQUITTO_BRIDGE_CIPHERS_TLS1_3
+          type: string
+          cli: --bridge-ciphers-tls1-3
+          description: Choose which TLS v1.3 ciphersuites are used for this bridge. Defaults to "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256"
+        - name: BH_MOSQUITTO_BRIDGE_IDENTITY
+          type: string
+          cli: --bridge-identity
+          description: PSK based SSL/TLS support Pre-shared-key encryption provides an alternative to certificate based encryption.
+        - name: BH_MOSQUITTO_BRIDGE_PSK
+          type: string
+          cli: --bridge-psk
+          description: PSK based SSL/TLS support Pre-shared-key encryption provides an alternative to certificate based encryption.
+        - name: BH_MOSQUITTO_ENABLE_CONTROL_API
+          type: enum:true,false
+          cli: --enable-control-api
+          description: Enable the $CONTROL/broker/# topic API
+      templates:
+        - src: mosquitto.conf.tmpl
+          dest: '{{ prefix }}/conf/mosquitto.conf'
+          mode: '0640'
     tags:
       - application
 

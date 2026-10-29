@@ -73,16 +73,25 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
         log(f"[skip] {title}: bundle up to date ({unit.recipe_sha256[:12]})")
         return "skipped"
 
-    url = unit.context["git"].get("release_download_url_template")
-    if not url:
-        raise BuildError(f"{unit.name}: git.release_download_url_template is required")
-    tarball = Path(cfg["default_download_path"]) / Path(url.split("?")[0]).name
+    git = unit.context["git"]
+    git_ref = git.get("ref_template")                       # a git source: pinned by commit instead of by tarball hash
+    if git_ref:
+        url = f"{git.get('repo', '')} {git_ref}"
+        tarball = Path(cfg["default_download_path"]) / f"{unit.name}-{unit.variant_data['full_version']}-git.tar"
+    else:
+        url = git.get("release_download_url_template")
+        if not url:
+            raise BuildError(f"{unit.name}: git.release_download_url_template (or git.ref_template) is required")
+        tarball = Path(cfg["default_download_path"]) / Path(url.split("?")[0]).name
     script = stage_script(unit, stages)
 
     if dry_run:
         log(f"[plan] {title}")
         log(f"  source   {url}")
-        log(f"  sha256   {unit.variant_data.get('sha256') or '(NOT PINNED)'}")
+        if git_ref:
+            log(f"  commit   {unit.variant_data.get('commit') or '(NOT PINNED)'}")
+        else:
+            log(f"  sha256   {unit.variant_data.get('sha256') or '(NOT PINNED)'}")
         if unit.package.get("signature"):
             log(f"  gpg      signers {', '.join(unit.package['signature'].get('fingerprints', []))}")
         log(f"  prefix   {unit.prefix}")
@@ -92,9 +101,15 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
         return "dry-run"
 
     log(f"[build] {title}")
-    fetch.download(url, tarball, unit.variant_data.get("sha256", ""), allow_unverified, log)
-    signature.verify_source(unit.package, unit.context, tarball, url, log)
-    fetch.extract(tarball, unit.src_dir, strip_components=unit.package.get("strip_components", 1))
+    if git_ref:
+        if unit.package.get("signature"):
+            raise BuildError(f"{unit.name}: signature: is not supported for git sources (the commit is the pin)")
+        fetch.git_archive(git["repo"], git_ref, unit.variant_data.get("commit", ""), tarball, allow_unverified, log)
+        fetch.extract(tarball, unit.src_dir, strip_components=unit.package.get("strip_components", 0))
+    else:
+        fetch.download(url, tarball, unit.variant_data.get("sha256", ""), allow_unverified, log)
+        signature.verify_source(unit.package, unit.context, tarball, url, log)
+        fetch.extract(tarball, unit.src_dir, strip_components=unit.package.get("strip_components", 1))
 
     Path(unit.prefix).mkdir(parents=True, exist_ok=True)
     if unit.tag == "application" and any(Path(unit.prefix).iterdir()):

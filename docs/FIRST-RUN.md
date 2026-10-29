@@ -62,6 +62,7 @@ the recipe hash is not stable between runs: capture both `stale.json` summaries 
 | ☐ | musl leg: `openssl` configures with `linux-x86_64` and `no-shared`; nginx links | the first real compile on musl. Typical failures: missing `linux-headers`, `perl` modules, `-static` quirks. Fix the recipe or the toolchain list; record |
 | ☐ | `verify --with-deps` green | |
 | ☐ | Artifact sizes plausible (nginx ~ a few MB) | |
+| ☐ | Then `packages = valkey` and `packages = mosquitto` (git sources: the runner needs outbound `git` to github.com; `cjson` is built first as a library), and `packages = prometheus` (release asset, no compiler) | each leg green; on musl the first real compile of valkey and mosquitto |
 
 ## 4. Consume what CI produced (the point of all this)
 

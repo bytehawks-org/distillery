@@ -67,7 +67,8 @@ def cmd_list(catalog, args):
 def cmd_plan(catalog, args):
     unit = catalog.unit(args.package, args.variant, args.tag)
     for index, item in enumerate(catalog.plan(unit), 1):
-        pinned = "sha256 ok" if item.variant_data.get("sha256") else "sha256 MISSING"
+        kind = "commit" if item.context["git"].get("ref_template") else "sha256"
+        pinned = f"{kind} ok" if item.variant_data.get(kind) else f"{kind} MISSING"
         state = "up-to-date" if bundle.is_up_to_date(item) else "to build"
         print(f"{index}. {item.name} {item.variant_data['full_version']} [{item.variant}/{item.tag}] "
               f"{pinned}, {state}, recipe {item.recipe_sha256[:12]}")
@@ -102,7 +103,11 @@ def cmd_bundle(catalog, args):
 
 def cmd_checksum(catalog, args):
     unit = catalog.unit(args.package, args.variant, args.tag)
-    url = unit.context["git"]["release_download_url_template"]
+    git = unit.context["git"]
+    if git.get("ref_template"):                                    # git source: the pin is the commit of the ref
+        print(f"{fetch.git_commit_of(git['repo'], git['ref_template'])}  {git['ref_template']}")
+        return
+    url = git["release_download_url_template"]
     with tempfile.TemporaryDirectory() as tmp:
         digest = fetch.download(url, Path(tmp) / "source", allow_unverified=True, log=eprint)
     print(f"{digest}  {Path(url).name}")
@@ -162,7 +167,8 @@ def cmd_bump(catalog, args):
         result = {"package": finding.package, "variant": finding.variant, "from": finding.current,
                   "to": version, "sha256": digest, "source": url, "newer_series": finding.newer_series}
         if not args.dry_run:
-            bumper.apply_bump(args.packages, finding.package, finding.variant, version, digest)
+            bumper.apply_bump(args.packages, finding.package, finding.variant, version, digest,
+                              key="commit" if unit.context["git"].get("ref_template") else "sha256")
         results.append(result)
         eprint(f"{'would bump' if args.dry_run else 'bumped'} {finding.package}/{finding.variant} "
                f"{finding.current} -> {version}")
@@ -295,6 +301,48 @@ def cmd_package(catalog, args):
     written = packaging.build_packages(catalog, unit, formats, args.out, conf, dry_run=args.dry_run,
                                        with_deps=args.with_deps, nfpm=args.nfpm, log=eprint)
     print(f"{'planned' if args.dry_run else 'wrote'} {len(written)} package(s) in {args.out}")
+    return 0
+
+
+def cmd_scaffold(catalog, args):
+    import yaml
+    from . import scaffold
+
+    source = Path(args.source)
+    text = source.read_text()
+    fmt = args.format or scaffold.detect_format(text, source.name)
+    hints = dict(h.split("=", 1) for h in (args.hint or []))
+    commented = args.commented if args.commented != "no" or not args.also else "loose"
+    settings, lines = scaffold.parse(text, fmt, commented)
+    chosen = scaffold.select(settings, args.include or "", args.exclude or "", args.max or 0, args.also or "")
+    entries = scaffold.env_entries(args.package, chosen, fmt, hints, lines, dict(d.split("=", 1) for d in (args.default or [])))
+    skipped = sum(1 for s in settings if s.repeated)
+    eprint(f"{source.name}: format {fmt}, {len(settings)} settings found, {len(entries)} selected"
+           + (f", {skipped} repeated directives left out" if skipped else ""))
+
+    if args.list:
+        for e in entries:
+            print(f"{e['name']:44} {e['type']:16} {str(e.get('default', '(none)')):24} {e.get('description', '')[:60]}")
+        return 0
+
+    template_name = args.template or f"{source.name}.tmpl"
+    dest = args.dest or "{{ prefix }}/conf/" + source.name
+    template = {"src": template_name, "dest": dest, "mode": args.mode}
+    rendered = scaffold.render_template(lines, chosen, fmt)
+
+    if not args.write:
+        print(yaml.safe_dump(entries, sort_keys=False, width=200).rstrip())
+        eprint(f"--write would add these to package '{args.package}' (existing entries untouched) and create "
+               f"assets/{args.package}/{template_name} ({len(rendered.splitlines())} lines), rendered to {dest}")
+        return 0
+
+    target = Path(args.assets) / args.package / template_name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(rendered)
+    added, template_added = scaffold.merge_into_packages(args.packages, args.package, entries, template)
+    eprint(f"wrote {target}; {len(added)} new runtime.env entries in {args.packages}"
+           + ("; template registered" if template_added else "; template already registered")
+           + f"; {len(entries) - len(added)} already present, left as they are")
     return 0
 
 

@@ -50,6 +50,17 @@ in the recipe hash. The `sha256` is of the downloaded tarball exactly as served.
 Extra variant keys are available as `{{ variant.<key> }}` (e.g. `build: 10` → `{{ variant.build }}`) and are part
 of the recipe hash.
 
+## Git sources
+
+```yaml
+variant: [{name: stable, ..., commit: <40 hex>}]       # instead of sha256
+git:
+  repo: https://github.com/valkey-io/valkey
+  ref_template: "{{ full_version }}"                     # instead of release_download_url_template
+```
+The commit is the pin: a build refuses a tag that no longer points to it. `strip_components` defaults to 0 for a git source. See
+[ADDING-A-PACKAGE](ADDING-A-PACKAGE.md#git-sources-no-tarball).
+
 ## `upstream` and `track` - following new releases
 
 ```yaml
@@ -162,7 +173,7 @@ runtime:
 
 | Key | Meaning |
 |---|---|
-| `user` | service account; `gid: 0` = OpenShift/arbitrary-uid convention |
+| `user` | service account; `gid: 0` = OpenShift/arbitrary-uid convention. Give every service of the catalog **its own uid** (nginx 1001, nifi 1002, valkey 1003, prometheus 1004, mosquitto 1005): services installed on the same host cannot share one |
 | `dirs` | created by `shaker install`; `owner` `uid:gid` recursive; numeric `mode` = directory only, symbolic (`g+rwX`) = recursive |
 | `persistence` | `path` inside the image → `volume` mount; seeded on first use then symlinked |
 | `templates` | `src` relative to `assets/<package>/`, rendered at `shaker init` with the parameters; `mode` of the result |

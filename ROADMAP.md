@@ -70,7 +70,7 @@ matching change in the bundle schema / Shaker.
 | ⬜ Parallel independent units | schedule the DAG with `--max-units`, per-unit logs |
 | ✅ Remote artifact cache | content-addressed by recipe hash (`--store`, `chain`) with dir/GitHub/Nexus backends; more backends below |
 | ⬜ Patches | `patches:` list (checksummed) applied in `pre` with `patch -p1`, part of the recipe hash |
-| ⬜ git sources | `source: {git, rev}` with commit pinning; submodules |
+| 🚧 git sources | ✅ commit-pinned (`ref_template` + `commit`), `bump`, `checksum`; ⬜ submodules, ⬜ signed-tag verification |
 | ⬜ Non-tarball sources | zip, zst, xz explicit; local directories for development |
 | ⬜ `check` policy | run the test-suite for release builds by default |
 | ⬜ Toolchain pinning | record compiler/libc versions in the manifest; optional builder image |
@@ -92,7 +92,9 @@ matching change in the bundle schema / Shaker.
 | openssl 3.0.18 / 3.5.4 / 3.6.0 | ✅ (3.5.4 built; others pinned, not yet built) |
 | zlib 1.3.1, pcre2 10.43 | ✅ built |
 | nginx 1.28.0 | ✅ built, runtime complete, run through Shaker |
-| postgresql, valkey, haproxy, mariadb, php-fpm, nodejs, python | ⬜ candidates (each needs a runtime contract and an init story) |
+| nifi 2.9.0 on temurin 21.0.9 | ✅ built, signed sources, run through Shaker |
+| valkey 9.1.3 (git source, TLS), prometheus 3.15.1 (release asset), mosquitto 2.1.2 (git source, with cjson 1.7.19) | ✅ built, run through Shaker (parameters and templates from `scaffold`), `verify --files` ok; glibc only so far |
+| postgresql, haproxy, mariadb, php-fpm, nodejs, python | ⬜ candidates. postgresql from git needs flex (not on the build host); haproxy's configuration is a DSL `scaffold` cannot read |
 | musl toolchain / fully static variants | ⬜ idea for scratch/distroless images |
 
 ## 1.0 criteria
@@ -100,7 +102,7 @@ matching change in the bundle schema / Shaker.
 * bundle schema 1 frozen; versioned negotiation; compatibility tests with the previous Shaker release;
 * signature + SBOM + reproducibility checks in the default release pipeline;
 * multi-arch builds with an artifact cache;
-* ≥ 5 packages built and run in containers and on VMs through Shaker;
+* ≥ 5 packages built and run in containers and on VMs through Shaker: ✅ 5 services (nginx, nifi, valkey, prometheus, mosquitto) built and run through Shaker on a VM-like host; ⬜ in containers and on musl;
 * documented process for CVE-driven rebuilds (bump → `plan` → rebuild → publish).
 
 ## Known gaps today (honest list)
