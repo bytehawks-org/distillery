@@ -1,7 +1,7 @@
 # Adding a package
 
-Worked example: a hypothetical `valkey` application (`make`-based, TLS through openssl). Every step
-is the same for any source tarball.
+Worked example: `valkey` (`make`-based, TLS through openssl), which is in the catalog. Every step is the same for any source
+tarball; for a project that publishes no usable tarball, or when you want the pin to be a commit, see "Git sources" below.
 
 ## 1. Find a stable tarball URL and pin it
 
@@ -14,6 +14,21 @@ python3 scripts/autobuilder.py checksum --package valkey
 ```
 Verify the value against the upstream's published checksum/signature, then write it into `sha256:`.
 (`checksum` downloads through the same code path as a build, so it also proves the URL works.)
+
+## Git sources (no tarball)
+
+When there is no stable tarball, or a tag is the natural release, pin the **commit** instead of a hash:
+
+```yaml
+    variant:
+      - {name: stable, major_version: 9.1, patch_version: 3, full_version: 9.1.3, commit: 29173b67508b2de4c0f0ed551f3b47cf19fc3ca8}
+    git:
+      repo: https://github.com/valkey-io/valkey
+      ref_template: "{{ full_version }}"          # the tag; instead of release_download_url_template
+```
+`autobuilder.py checksum --package valkey` prints the commit the tag points to. A build clones the tag shallowly, refuses it unless
+`HEAD` is exactly the pinned commit (a tag can be moved, a commit cannot), and exports the tree with `git archive` (no `.git`,
+`export-ignore` honoured, submodules not included). `bump` pins the new tag's commit; `signature:` does not apply to git sources.
 
 ## 2. Declare source, dependencies, build
 
@@ -68,6 +83,18 @@ Guidelines
 * Secrets: `type: secret` (masked everywhere) - operators will use `BH_VALKEY_PASSWORD_FILE`.
 * `native_env` only when the application itself reads an environment variable.
 * `run.command` is an argv list. Anything needing shell features goes into a small wrapper script in `assets/` copied by a `post` stage.
+
+### 3b. Let `scaffold` write the parameters and the template
+
+If the application ships a sample configuration file with a regular shape, do not write `runtime.env` and the template by hand:
+
+```sh
+autobuilder.py scaffold --package valkey --from valkey.conf --list      # review what it would expose
+autobuilder.py scaffold --package valkey --from valkey.conf --write --exclude '^(include|loadmodule|user)$' \
+    --default 'dir={{ prefix }}/data'
+```
+84 parameters, their types, defaults, descriptions and the template come out of valkey's own `valkey.conf`; see [SCAFFOLD](SCAFFOLD.md)
+for the formats, the inference rules and what stays manual (flags, user, directories, run command, health check).
 
 ## 4. Write the template(s)
 

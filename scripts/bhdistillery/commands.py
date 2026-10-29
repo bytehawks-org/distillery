@@ -315,7 +315,7 @@ def cmd_scaffold(catalog, args):
     commented = args.commented if args.commented != "no" or not args.also else "loose"
     settings, lines = scaffold.parse(text, fmt, commented)
     chosen = scaffold.select(settings, args.include or "", args.exclude or "", args.max or 0, args.also or "")
-    entries = scaffold.env_entries(args.package, chosen, fmt, hints, lines)
+    entries = scaffold.env_entries(args.package, chosen, fmt, hints, lines, dict(d.split("=", 1) for d in (args.default or [])))
     skipped = sum(1 for s in settings if s.repeated)
     eprint(f"{source.name}: format {fmt}, {len(settings)} settings found, {len(entries)} selected"
            + (f", {skipped} repeated directives left out" if skipped else ""))

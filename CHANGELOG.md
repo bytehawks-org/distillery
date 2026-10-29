@@ -16,6 +16,16 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 - **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
   `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
 - **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **Git sources.** `git.ref_template` + `commit` instead of `release_download_url_template` + `sha256`: shallow clone of the tag, refused unless
+  `HEAD` is the pinned commit, `git archive` export; `plan`, `checksum` and `bump` understand it. Used by valkey, mosquitto and cjson.
+- **`scaffold`** ([docs/SCAFFOLD.md](docs/SCAFFOLD.md)): derives `runtime.env` entries and a template from a sample configuration file
+  (`key value`, `key = value`, ini, flat YAML): inferred types (port, uint, enum from yes/no and from the documentation, path, secret),
+  descriptions from comments, commented examples as optional settings (conditional `{{? NAME }}` lines, no default), `--include`,
+  `--exclude`, `--also`, `--hint`, `--default`, idempotent merge that never changes an existing entry.
+- **New packages**: `valkey` 9.1.3, `prometheus` 3.15.1, `mosquitto` 2.1.2 and the library `cjson` 1.7.19; each built and run through Shaker
+  (valkey with a password and a memory limit, prometheus with a changed retention and scrape interval, a real MQTT message through
+  mosquitto). Services now have distinct uids (nifi 1002, valkey 1003, prometheus 1004, mosquitto 1005) so they can share a host. The
+  OpenSSL static libraries are built with `-fPIC` (they can be linked into shared objects); its recipe hash changes.
 - **Shaker integration** ([docs/INTEGRATION.md](docs/INTEGRATION.md)), additive to bundle schema 1: `manifest.env` carries `BH_PKG_ARCH` and
   `BH_PKG_LIBC` (also in `manifest.json`); `runtime.mutable` becomes `mutable|path` records (`verify` and Shaker's `verify --files` skip
   them; set for NiFi's `conf/`); every build writes `bundle.sha256` over the bundle and `files.sha256` and signs it

@@ -147,6 +147,7 @@ def make_parser():
     p_sc.add_argument("--also", metavar="REGEX", help="besides the active settings, also these ones when the file only has them as commented defaults")
     p_sc.add_argument("--max", type=int, help="at most N settings")
     p_sc.add_argument("--hint", action="append", metavar="KEY=TYPE", help="override an inferred type, e.g. loglevel=enum:debug,notice,warning")
+    p_sc.add_argument("--default", action="append", metavar="KEY=VALUE", help="set the default of a setting, e.g. dir='{{ prefix }}/data'")
     p_sc.add_argument("--list", action="store_true", help="show the proposed parameters and stop")
     p_sc.add_argument("--write", action="store_true", help="add the entries to packages.yaml, write assets/<package>/<name>.tmpl and register it")
     p_sc.add_argument("--template", metavar="NAME", help="template file name (default <file>.tmpl)")

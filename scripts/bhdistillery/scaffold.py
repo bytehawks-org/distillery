@@ -37,6 +37,7 @@ class Setting:
     active: bool = True            # False: found as a commented default
     line: int = 0
     repeated: bool = False
+    bare: bool = False             # documented as a bare `#key` with no example value
     type: str = "string"
     secret: bool = False
     name: str = ""
@@ -148,7 +149,8 @@ def parse(text, fmt, commented="no"):
             if commented == "strict" and m.group(2):
                 continue
             body, offset = m.group(3), m.end(3) - len(m.group(3))
-            if fmt == "yaml" or not re.match(rf"^{IDENT}\s*(=|\s)\s*\S", body or " "):
+            bare = commented == "strict" and re.match(rf"^{IDENT}\s*$", body or " ")
+            if fmt == "yaml" or not (bare or re.match(rf"^{IDENT}\s*(=|\s)\s*\S", body or " ")):
                 continue
             if commented == "loose" and fmt == "space" and (body.endswith(".") or len(body.split()) > 8):
                 continue
@@ -189,13 +191,17 @@ def parse(text, fmt, commented="no"):
         else:
             sep = r"\s*=\s*" if fmt in ("equals", "ini") else r"\s+"
             m = re.match(rf"^(\s*)({IDENT}){sep}(.*)$", body)
+            is_bare = False
+            if not m:
+                m = re.match(rf"^(\s*)({IDENT})()\s*$", body)
+                is_bare = bool(m)
             if not m:
                 continue
             raw, used = _split_value(m.group(3))
             inner, quote, qs, qe = _quoted(raw)
             start = offset + m.start(3) + qs
             setting = Setting(m.group(2), section if fmt == "ini" else "", inner, quote, _doc_above(lines, number), active,
-                              number, span=(start, start + len(inner)))
+                              number, bare=is_bare, span=(start, start + len(inner)))
         if not setting.doc:
             trailing = re.search(r"\s#\s*(.+)$", line[setting.span[1]:])
             if trailing:
@@ -284,8 +290,10 @@ def short(text, limit=160):
     return (cut[:sentence + 1] if sentence > 40 else cut).rstrip(",;:") + ("" if sentence > 40 else "...")
 
 
-def env_entries(package, settings, fmt, hints=None, lines=None):
-    """runtime.env entries (dicts) for `settings`, names made unique."""
+def env_entries(package, settings, fmt, hints=None, lines=None, defaults=None):
+    """runtime.env entries (dicts) for `settings`, names made unique. `defaults` ({key or section.key: value}) sets or replaces
+    a default: how a service-account path or a safe starting value is chosen without editing the result by hand."""
+    defaults = defaults or {}
     entries, used = [], set()
     for s in settings:
         infer(s, hints, lines)
@@ -297,6 +305,9 @@ def env_entries(package, settings, fmt, hints=None, lines=None):
         entry = {"name": name, "type": s.type}
         if not s.secret and s.value != "" and s.active:           # a commented value is an example, not a default
             entry["default"] = int(s.value) if s.type in ("int", "uint", "port") else s.value
+        if s.path in defaults or s.key in defaults:
+            value = defaults.get(s.path, defaults.get(s.key))
+            entry["default"] = int(value) if s.type in ("int", "uint", "port") and re.fullmatch(r"-?\d+", value) else value
         if fmt in ("ini", "equals", "yaml"):
             entry["file_key"] = s.path
         entry["cli"] = "--" + re.sub(r"[^a-z0-9]+", "-", s.path.lower()).strip("-")
@@ -320,13 +331,14 @@ def render_template(lines, settings, fmt):
             continue
         optional = s.secret or s.value == "" or not s.active
         start, end = s.span
+        placeholder = ("{{ " + s.name + " }}") if not s.bare else (" = " if fmt in ("equals", "ini") else " ") + "{{ " + s.name + " }}"
         if s.active:
             new = line[:start] + "{{ " + s.name + " }}" + line[end:]
         else:                                                    # `#key = value` -> `key = value`
             hash_at = line.index("#")
             new = line[:hash_at] + line[hash_at + 1:].lstrip(" ")
             shift = len(line) - len(new)
-            new = new[:start - shift] + "{{ " + s.name + " }}" + new[end - shift:]
+            new = new[:start - shift] + placeholder + new[end - shift:]
         if optional:
             indent = re.match(r"^\s*", new).group(0)
             new = indent + "{{? " + s.name + " }}" + new[len(indent):]

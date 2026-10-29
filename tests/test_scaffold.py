@@ -98,6 +98,21 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(sum(1 for s in settings if s.key == "tls-port"), 1)       # one example kept
         self.assertTrue(all(s.repeated for s in settings if s.key == "save"))      # real repeats stay out
 
+    def test_bare_commented_keys_are_parameters_in_strict_mode(self):
+        text = "# Where the PID is written.\n#pid_file\n#listener 1883\n# prose line\n#persistence false\n"
+        self.assertNotIn("pid_file", [s.key for s in sc.parse(text, "space", "loose")[0]])        # loose mode wants a value
+        settings, lines = sc.parse(text, "space", "strict")
+        self.assertEqual([s.key for s in settings], ["pid_file", "listener", "persistence"])
+        env = sc.env_entries("demo", settings, "space", None, lines)
+        self.assertEqual(env[0]["description"], "Where the PID is written.")
+        self.assertNotIn("default", env[0])
+        template = sc.render_template(lines, settings, "space").splitlines()
+        self.assertIn("{{? BH_DEMO_PID_FILE }}pid_file {{ BH_DEMO_PID_FILE }}", template)
+        self.assertIn("{{? BH_DEMO_LISTENER }}listener {{ BH_DEMO_LISTENER }}", template)
+        eq_settings, eq_lines = sc.parse("#key\n#other = 1\n", "equals", "strict")
+        sc.env_entries("demo", eq_settings, "equals", None, eq_lines)
+        self.assertIn("{{? BH_DEMO_KEY }}key = {{ BH_DEMO_KEY }}", sc.render_template(eq_lines, eq_settings, "equals"))
+
     def test_a_port_that_documents_zero_is_not_range_checked_as_a_port(self):
         text = "# If port 0 is specified the server will not listen on a TCP socket.\nport 6379\n# Plain port.\nhttp-port 8080\n"
         _, _, env = entries(text, "space")
@@ -138,6 +153,15 @@ class ParseTests(unittest.TestCase):
     def test_hint_overrides_the_inferred_type(self):
         _, _, env = entries(SPACE, "space", include="^loglevel$", hints={"loglevel": "enum:debug,notice"})
         self.assertEqual(env[0]["type"], "enum:debug,notice")
+
+    def test_defaults_can_be_set_from_the_command_line(self):
+        settings, lines = sc.parse(SPACE, "space", "loose")
+        chosen = sc.select(settings, also="^requirepass$", include="^(port|dir)$")
+        env = {e["name"]: e for e in sc.env_entries("demo", chosen, "space", None, lines,
+                                                    {"dir": "{{ prefix }}/data", "port": "7000", "requirepass": "x"})}
+        self.assertEqual(env["BH_DEMO_DIR"]["default"], "{{ prefix }}/data")
+        self.assertEqual(env["BH_DEMO_PORT"]["default"], 7000)                    # typed like the setting
+        self.assertEqual(env["BH_DEMO_REQUIREPASS"]["default"], "x")
 
     def test_include_exclude_and_max(self):
         settings, _ = sc.parse(SPACE, "space")
@@ -257,7 +281,7 @@ class CommandTests(unittest.TestCase):
             class Args:
                 package, source, format, commented = "demo", str(t / "demo.conf"), None, "no"
                 include, exclude, max, hint = "", "^save$", 0, None
-                template, dest, mode, also = None, None, "0640", ""
+                template, dest, mode, also, default = None, None, "0640", "", None
                 assets, packages = str(t / "assets"), str(t / "packages.yaml")
                 list, write = True, False
 
