@@ -53,6 +53,61 @@ class BundleTests(unittest.TestCase):
                          "stopsignal|QUIT", "health|tcp|127.0.0.1|${BH_DEMO_PORT}", "requires|openssl"):
             self.assertIn(expected, spec)
 
+    def test_hooks_are_installed_from_assets_with_execute_bit(self):
+        with TempDir() as t:
+            (t / "assets" / "demo" / "hooks" / "pre_init").mkdir(parents=True)
+            (t / "assets" / "demo" / "hooks" / "pre_init" / "10-a.sh").write_text("#!/bin/sh\n")
+            cat = catalog({"demo": package("file:///x.tgz", "a" * 64, runtime={
+                "hooks": {"pre_init": "{{ prefix }}/hooks/pre-init.d", "first_init": "{{ prefix }}/hooks/init.d"}})}, t / "r")
+            unit = cat.unit("demo")
+            cat.plan(unit)
+            bundle.emit(unit, t / "assets")
+            hook = t / "r" / "demo" / "hooks" / "pre-init.d" / "10-a.sh"
+            self.assertTrue(hook.is_file())
+            self.assertTrue(hook.stat().st_mode & 0o111)
+            self.assertFalse((t / "r" / "demo" / "hooks" / "init.d").exists())      # no assets for that stage
+
+    def test_platform_mutable_and_seal(self):
+        import hashlib
+        with TempDir() as t:
+            (t / "assets" / "demo").mkdir(parents=True)
+            (t / "assets" / "demo" / "demo.conf.tmpl").write_text("port={{ BH_DEMO_PORT }}\n")
+            cat = catalog({"demo": package("file:///x.tgz", "a" * 64, runtime={"mutable": ["{{ prefix }}/conf"]})}, t / "r")
+            unit = cat.unit("demo")
+            cat.plan(unit)
+            self.assertIn(f"mutable|{t / 'r' / 'demo' / 'conf'}", bundle.spec_lines(unit))
+            out = bundle.emit(unit, t / "assets", built=True)
+            env = (out / "manifest.env").read_text()
+            self.assertIn(f"BH_PKG_ARCH={unit.context['arch']}", env)
+            self.assertIn(f"BH_PKG_LIBC={unit.context['libc']}", env)
+            self.assertNotIn("BH_PKG_DEPENDS", env)                       # no dependencies, no line
+
+            (out / "files.sha256").write_text("")
+            written = bundle.seal(out)                                    # no signing key configured: digest only
+            self.assertEqual([p.name for p in written], ["bundle.sha256"])
+            lines = (out / "bundle.sha256").read_text().splitlines()
+            names = [l.split("  ", 1)[1] for l in lines]
+            self.assertEqual(names, ["manifest.json", "manifest.env", "rosetta.map", "runtime.spec", "files.sha256",
+                                     "assets/demo.conf.tmpl"])
+            for line in lines:
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((out / name).read_bytes()).hexdigest(), digest)
+
+    def test_dependencies_are_listed_in_manifest_env(self):
+        lib = package("file:///l.tgz", "a" * 64, tags=["library"])
+        app = package("file:///a.tgz", "b" * 64, depends_on=["lib"])
+        cat = catalog({"lib": lib, "app": app}, "/r")
+        unit = cat.unit("app")
+        cat.plan(unit)
+        env = bundle.manifest_env(bundle.manifest(unit))
+        self.assertIn(f"BH_PKG_DEPENDS=lib={unit.depends[0].recipe_sha256}\n", env)
+
+    def test_variant_keys_are_available_to_templates(self):
+        pkg = package("file:///x-{{ variant.build }}.tgz", "a" * 64)
+        pkg["variant"][0]["build"] = 10
+        unit = catalog({"demo": pkg}, "/r").unit("demo")
+        self.assertEqual(unit.context["variant"]["build"], 10)
+
     def test_spec_rejects_bad_hook_stage_and_shell_string_run(self):
         with self.assertRaises(bundle.BundleError):
             bundle.spec_lines(unit_with({"hooks": {"whenever": "/x"}}))

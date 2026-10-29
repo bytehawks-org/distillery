@@ -10,7 +10,7 @@ package:
     strip_components: 1                      # default 1
     env:         { KEY: value }              # extra build environment (templated)
     commands:    { configure, make, check, install, pre, post }
-    runtime:     { user, dirs, persistence, templates, hooks, run, healthcheck, requires, env }
+    runtime:     { user, dirs, persistence, mutable, templates, hooks, run, healthcheck, requires, env }
     upstream:    { type, repo, tag_regex, checksum_url_template }     # release tracking
     publish_tag: library | application                                # role under which artifacts are published
     tags:        [ library | application ]
@@ -47,6 +47,9 @@ variant:
 Selection: `--variant NAME` (default `stable`, otherwise the first declared). Any extra key is kept
 in the recipe hash. The `sha256` is of the downloaded tarball exactly as served.
 
+Extra variant keys are available as `{{ variant.<key> }}` (e.g. `build: 10` → `{{ variant.build }}`) and are part
+of the recipe hash.
+
 ## `upstream` and `track` - following new releases
 
 ```yaml
@@ -62,8 +65,40 @@ upstream:
   are only reported by `outdated`.
 * `checksum_url_template` (optional): URL of a file whose first word is the SHA-256 published by upstream
   (OpenSSL publishes `<tarball>.sha256`). `bump` refuses to write a hash that differs from it.
+* `checksum_url_template` may point to a sha256 (64 hex) or sha512 (128 hex) file; the pin is always sha256.
 * Quote versions that end in 0 in YAML (`"1.30"`), otherwise they load as numbers.
 * Remove the block to stop tracking a package.
+
+## `signature` - OpenPGP verification of the source
+
+```yaml
+signature:
+  type: gpg                                              # the only type today
+  url_template: "{{ git.release_download_url_template }}.asc"      # default; use .sig where upstream does
+  keys_url: https://downloads.apache.org/nifi/KEYS       # public keys: any URL, key server included
+  fingerprints:                                          # REQUIRED: full 40-hex primary fingerprints = the trust anchor
+    - 3FE925C2BED744021E6169A2F92A93B30C07C6D5           # Pierre Villard
+```
+* Checked in `build` right after the download and **before** extraction or any build command, and in `bump` before
+  a new checksum is pinned. Failure = no build, no bump.
+* The keys are imported into a throw-away keyring; the signature is accepted only if it is good, the key is not
+  expired or revoked, and its **primary** fingerprint is in `fingerprints`. The key host can therefore not add a signer.
+* A release signed by someone new (a new release manager) fails until a human reviews the key and adds the fingerprint.
+* Needs `gpg` on the builder. Pin fingerprints from a trusted channel (upstream site, web of trust), not from the same download.
+
+## `arch_map` and per-architecture sources
+
+```yaml
+arch_map: {amd64: x64, arm64: aarch64}      # our arch name -> the upstream's; {{ arch_name }} in templates
+variant:
+  - name: stable
+    sha256: {amd64: aeab55..., arm64: 1d0410...}      # or a plain string when the source is the same everywhere
+```
+Keys are `<arch>` or, for sources that differ by C library, `<arch>-musl` (`amd64-musl`): the most specific one wins, so a source
+that is the same on both libcs needs only the `<arch>` entries. `libc_map: {glibc: linux, musl: alpine-linux}` gives `{{ libc_name }}`
+(Temurin names its Alpine builds that way); `{{ libc }}` (`glibc`/`musl`) and `{{ platform }}` (`amd64`, `amd64-musl`) are always available.
+A platform without a pin is "not pinned": the build refuses. `checksum --arch arm64` prints the value to pin;
+`bump` recomputes every architecture of a map. `arch` is part of the recipe hash, so artifacts stay per architecture.
 
 ## `publish_tag`
 Which role the CI builds and stores for the package: `library` if the package can be one, else its first tag.
@@ -77,7 +112,7 @@ git:
   release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
 ```
 `release_download_url_template` is required for `build`/`checksum`. `https://`, `http://` and `file://`
-URLs work. The archive is cached as `<default_download_path>/<basename of the URL>`; other keys are free-form.
+URLs work; the archive may be a tarball (any compression) or a zip (`strip_components` applies to both). The archive is cached as `<default_download_path>/<basename of the URL>`; other keys are free-form.
 
 ## `depends_on`
 
@@ -131,11 +166,12 @@ runtime:
 | `dirs` | created by `shaker install`; `owner` `uid:gid` recursive; numeric `mode` = directory only, symbolic (`g+rwX`) = recursive |
 | `persistence` | `path` inside the image → `volume` mount; seeded on first use then symlinked |
 | `templates` | `src` relative to `assets/<package>/`, rendered at `shaker init` with the parameters; `mode` of the result |
-| `hooks` | directories of scripts for `pre_init` (always), `first_init` (once), `post_init` (always) |
+| `hooks` | directories of scripts for `pre_init` (always), `first_init` (once), `post_init` (always). Files in `assets/<package>/hooks/<stage>/` are copied there (mode 0755) when the bundle is emitted |
 | `run.command` | **argv list** (a string is rejected: no shell); `${BH_X}` expanded by Shaker from parameters |
 | `run.stop_signal` | used by `shaker stop` and the systemd unit (`TERM` default) |
 | `run.pidfile` | for `--daemon` / `stop` |
 | `healthcheck` | `tcp: {host, port}` (default host 127.0.0.1) or `command: [argv]` |
+| `mutable` | list of paths (files or directories) the runtime rewrites on purpose, e.g. a configuration directory edited by a hook; `verify` and `shaker verify --files` skip them. Rendered templates and the persisted data directory are not in the build's file list and need no entry |
 | `requires` | tools that must exist (PATH, `<prefix>/bin`, `<deps>/bin`) for `shaker verify` |
 
 ### `runtime.env` - parameters

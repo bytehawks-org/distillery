@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04          # python 3.9 (the minimum we support) is not on the newest runner image
     strategy:
       matrix:
         python: ["3.9", "3.12", "3.13"]
@@ -20,15 +20,32 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -r scripts/requirements.txt
       - run: python -W error::ResourceWarning -m unittest discover -s tests -v
-      - name: catalog is consistent (every source pinned, plans resolve)
+      - name: catalog is consistent (every source pinned for every platform, plans resolve)
         run: |
           python scripts/autobuilder.py list
           for p in $(python scripts/autobuilder.py list | awk '{print $1}'); do
-            tag="$(python scripts/autobuilder.py list | awk -v p=$p '$1==p{split($2,t,","); print t[1]}')"
-            plan="$(python scripts/autobuilder.py plan --package "$p" --tag "$tag" --root /tmp/stage)"
-            echo "$plan"
-            if echo "$plan" | grep -q MISSING; then echo "::error::$p has an unpinned source"; exit 1; fi
+            tag="$(python scripts/autobuilder.py list | awk -v p="$p" '$1==p{split($2,t,","); print t[1]}')"
+            for arch in amd64 arm64; do
+              for libc in glibc musl; do
+                plan="$(python scripts/autobuilder.py plan --package "$p" --tag "$tag" --root /tmp/stage --arch $arch --libc $libc)"
+                echo "== $p $arch/$libc"; echo "$plan"
+                if echo "$plan" | grep -q MISSING; then echo "::error::$p has an unpinned source for $arch/$libc"; exit 1; fi
+              done
+            done
           done
+
+  test-musl:
+    # the tool itself must run on Alpine: it is what builds the musl artifacts
+    runs-on: ubuntu-latest
+    container: alpine:3.20
+    steps:
+      - run: apk add --no-cache bash git gnupg python3 py3-pip py3-virtualenv
+      - uses: actions/checkout@v4
+      - run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install -r scripts/requirements.txt
+          /opt/venv/bin/python -W error::ResourceWarning -m unittest discover -s tests -v
+        shell: bash
 
   workflows:
     runs-on: ubuntu-latest

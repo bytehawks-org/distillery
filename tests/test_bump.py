@@ -69,6 +69,36 @@ class BumpTests(unittest.TestCase):
                 bump.fetch_checksum(unit, "1.0", log=lambda m: None)
             self.assertIn("differs", str(ctx.exception))
 
+    def test_apply_bump_writes_a_per_arch_map(self):
+        with TempDir() as t:
+            f = t / "packages.yaml"
+            f.write_text(YAML)
+            bump.apply_bump(f, "demo", "other", "10.44", {"amd64": "e" * 64, "arm64": "f" * 64})
+            import yaml
+            variant = yaml.safe_load(f.read_text())["package"]["demo"]["variant"][1]
+            self.assertEqual(variant["sha256"], {"amd64": "e" * 64, "arm64": "f" * 64})
+            self.assertEqual(str(variant["full_version"]), "10.44")
+
+    def test_sha512_published_by_upstream_is_cross_checked(self):
+        import hashlib
+        with TempDir() as t:
+            digest = make_tarball(t / "demo-1.0.tgz", {"a": "x"})
+            (t / "demo-1.0.tgz.sha512").write_text(hashlib.sha512((t / "demo-1.0.tgz").read_bytes()).hexdigest() + "\n")
+            pkg = package(f"file://{t}/demo-" + "{{ full_version }}.tgz", "a" * 64,
+                          upstream={"checksum_url_template": "{{ git.release_download_url_template }}.sha512"})
+            unit = catalog({"demo": pkg}, t / "r").unit("demo")
+            url, got = bump.fetch_checksum(unit, "1.0", log=lambda m: None)
+            self.assertEqual(got, digest)                              # still pinned as sha256
+
+            (t / "demo-1.0.tgz.sha512").write_text("0" * 128 + "\n")
+            with self.assertRaises(bump.BumpError) as ctx:
+                bump.fetch_checksum(unit, "1.0", log=lambda m: None)
+            self.assertIn("sha512", str(ctx.exception))
+
+            (t / "demo-1.0.tgz.sha512").write_text("abc\n")
+            with self.assertRaises(bump.BumpError):
+                bump.fetch_checksum(unit, "1.0", log=lambda m: None)
+
 
 if __name__ == "__main__":
     unittest.main()

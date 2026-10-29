@@ -28,6 +28,8 @@ package:
         patch_version: 0
         full_version: 3.6.0
         sha256: b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9
+    arch_map: {amd64: linux-x86_64, arm64: linux-aarch64}      # OpenSSL's Configure target (musl and glibc alike)
+    license: Apache-2.0
     website: https://www.{{ name }}.org/
     git:
       repo: https://github.com/{{ name }}/{{ name }}
@@ -35,7 +37,7 @@ package:
       release_download_url_template: "{{ git.repo }}/releases/download/{{ name }}-{{ full_version }}/{{ name }}-{{ full_version }}.tar.gz"
     commands:
       configure: |
-        ./Configure linux-x86_64 \
+        ./Configure {{ arch_name }} \
           --prefix={{ prefix }} \
           --libdir=lib \
           --openssldir={{ prefix }}/etc/ssl \
@@ -76,6 +78,7 @@ package:
         patch_version: 1
         full_version: 1.3.1
         sha256: 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+    license: Zlib
     website: https://zlib.net/
     git:
       repo: https://github.com/madler/zlib
@@ -96,6 +99,7 @@ package:
         patch_version: 43
         full_version: 10.43
         sha256: 889d16be5abb8d05400b33c25e151638b8d4bac0e2d9c76e9d6923118ae8a34e
+    license: BSD-3-Clause
     website: https://www.pcre.org/
     git:
       repo: https://github.com/PCRE2Project/pcre2
@@ -116,6 +120,7 @@ package:
         patch_version: 0
         full_version: 1.28.0
         sha256: c6b5c6b086c0df9d3ca3ff5e084c1d0ef909e6038279c71c1c3e985f576ff76a
+    license: BSD-2-Clause
     website: https://nginx.org/
     depends_on:
       - {name: openssl, variant: stable}
@@ -206,6 +211,194 @@ package:
           file_key: server.tokens
           cli: --server-tokens
           description: Expose the nginx version in headers and error pages
+    tags:
+      - application
+
+  # Binary repack: the JRE NiFi runs on, as a unit of its own (prefix /opt/bytehawks/temurin).
+  # The artifact and its sha256 are per architecture: arch_map translates our names to Adoptium's.
+  temurin:
+    variant:
+      - name: stable
+        major_version: 21
+        patch_version: 0
+        full_version: 21.0.9
+        build: 10
+        sha256:                                     # per platform: <arch> (glibc) and <arch>-musl (Alpine builds)
+          amd64: aeab55d064a1a27a3744b0880b9b414077b4ed2b1790817eea3df60aec946431
+          arm64: 1d041073c65e834bdb4da732485a54ff829859dcd1549e7992f15bd73341be29
+          amd64-musl: 17aca4ecc1600f70ec88ea0f8bf3a06ba6806bdae8c96d03c07683c800f0d4e8
+          arm64-musl: 7f8c230ba505b418e4288e2b34758a6e4da32470944740e5ba0cfaae02271c22
+    arch_map: {amd64: x64, arm64: aarch64}
+    libc_map: {glibc: linux, musl: alpine-linux}
+    license: GPL-2.0-with-classpath-exception
+    website: https://adoptium.net/
+    git:
+      repo: https://github.com/adoptium/temurin{{ major_version }}-binaries
+      release_download_url_template: "{{ git.repo }}/releases/download/jdk-{{ full_version }}%2B{{ variant.build }}/OpenJDK{{ major_version }}U-jre_{{ arch_name }}_{{ libc_name }}_hotspot_{{ full_version }}_{{ variant.build }}.tar.gz"
+    # Signature made with the Adoptium key; the fingerprint below is the trust anchor, the key is fetched by it.
+    signature:
+      type: gpg
+      url_template: "{{ git.release_download_url_template }}.sig"
+      keys_url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3B04D753C9050D9A5D343F39843C48A565F8F04B"
+      fingerprints:
+        - 3B04D753C9050D9A5D343F39843C48A565F8F04B
+    commands:
+      install: |
+        mkdir -p {{ prefix }}
+        cp -a . {{ prefix }}/
+    tags:
+      - application
+
+  # Binary repack of the Apache distribution (zip): nothing is compiled. Upstream publishes sha512 only.
+  nifi:
+    variant:
+      - name: stable
+        major_version: 2.9
+        patch_version: 0
+        full_version: 2.9.0
+        sha256: 3376074740d632160aa3916104fd8ee7fbb7630eeda5b4ef319bc1a52d9a6e06
+    license: Apache-2.0
+    website: https://nifi.apache.org/
+    depends_on:
+      - {name: temurin, variant: stable, tag: application}
+    git:
+      repo: https://github.com/apache/nifi
+      release_download_url_template: "https://archive.apache.org/dist/nifi/{{ full_version }}/{{ name }}-{{ full_version }}-bin.zip"
+    upstream:
+      tag_regex: '^rel/nifi-(\d+\.\d+\.\d+)$'
+      checksum_url_template: "{{ git.release_download_url_template }}.sha512"
+    # Release managers sign with their own key: a release signed by someone new fails until the fingerprint is reviewed.
+    signature:
+      type: gpg
+      keys_url: https://downloads.apache.org/nifi/KEYS
+      fingerprints:
+        - 3FE925C2BED744021E6169A2F92A93B30C07C6D5      # Pierre Villard, 2.9.0
+    commands:
+      install: |
+        mkdir -p {{ prefix }}
+        cp -a . {{ prefix }}/
+    runtime:
+      user:
+        name: nifi
+        uid: 1001
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/logs", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/work", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1001:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1001:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      mutable:                                  # rewritten at every start by the post_init hook: not an integrity violation
+        - "{{ prefix }}/conf"
+      hooks:
+        post_init: "{{ prefix }}/hooks/post-init.d"
+      run:
+        command:
+          - "{{ prefix }}/bin/nifi.sh"
+          - run
+        stop_signal: TERM
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_NIFI_PORT}"}
+      env:
+        - name: BH_NIFI_PORT
+          type: port
+          default: 8443
+          aliases: [NIFI_WEB_HTTPS_PORT]
+          file_key: web.https.port
+          cli: --port
+          description: HTTPS listen port
+        - name: BH_NIFI_HOST
+          type: string
+          default: 0.0.0.0
+          aliases: [NIFI_WEB_HTTPS_HOST]
+          file_key: web.https.host
+          cli: --host
+          description: Interface NiFi binds to
+        - name: BH_NIFI_PROXY_HOSTS
+          type: string
+          default: ""
+          aliases: [NIFI_WEB_PROXY_HOST]
+          file_key: web.proxy.host
+          cli: --proxy-hosts
+          description: Comma separated host[:port] values accepted in the Host header (reverse proxy, external names)
+        - name: BH_NIFI_USERNAME
+          type: string
+          default: admin
+          aliases: [SINGLE_USER_CREDENTIALS_USERNAME]
+          file_key: security.username
+          cli: --username
+          description: Single user login
+        - name: BH_NIFI_PASSWORD
+          type: secret
+          required: true
+          aliases: [SINGLE_USER_CREDENTIALS_PASSWORD]
+          file_key: security.password
+          cli: --password
+          description: Single user password (at least 12 characters)
+        - name: BH_NIFI_SENSITIVE_PROPS_KEY
+          type: secret
+          required: true
+          aliases: [NIFI_SENSITIVE_PROPS_KEY]
+          file_key: security.sensitive_props_key
+          cli: --sensitive-props-key
+          description: Key that encrypts sensitive flow properties (at least 12 characters; changing it breaks an existing flow)
+        - name: BH_NIFI_JVM_HEAP_INIT
+          type: string
+          default: 1g
+          aliases: [NIFI_JVM_HEAP_INIT]
+          file_key: jvm.heap_init
+          cli: --jvm-heap-init
+          description: Initial JVM heap (-Xms)
+        - name: BH_NIFI_JVM_HEAP_MAX
+          type: string
+          default: 1g
+          aliases: [NIFI_JVM_HEAP_MAX]
+          file_key: jvm.heap_max
+          cli: --jvm-heap-max
+          description: Maximum JVM heap (-Xmx)
+        - name: BH_NIFI_DATA_DIR
+          type: path
+          default: "{{ prefix }}/data"
+          file_key: storage.data_dir
+          cli: --data-dir
+          description: Flow definition, repositories and local state (mount a volume here)
+        - name: BH_NIFI_JAVA_HOME
+          type: path
+          default: "{{ config.root }}/temurin"
+          native_env: JAVA_HOME
+          file_key: jvm.java_home
+          cli: --java-home
+          description: Java runtime used by NiFi (21 or later)
+    tags:
+      - application
+
+  # The tool `autobuilder.py package` uses to write deb/rpm/apk. Prebuilt Go binary; the archive has no top directory.
+  # Upstream publishes one checksums.txt for all files, so no checksum_url_template (the pin is still sha256 per arch).
+  nfpm:
+    variant:
+      - name: stable
+        major_version: 2.48
+        patch_version: 0
+        full_version: 2.48.0
+        sha256:
+          amd64: 6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
+          arm64: a9a75213763783b7669719e505474c748c5ad7dc66591a195619deb50f85c2f4
+    arch_map: {amd64: x86_64, arm64: arm64}
+    license: MIT
+    website: https://nfpm.goreleaser.com/
+    strip_components: 0
+    git:
+      repo: https://github.com/goreleaser/nfpm
+      release_download_url_template: "{{ git.repo }}/releases/download/v{{ full_version }}/{{ name }}_{{ full_version }}_Linux_{{ arch_name }}.tar.gz"
+    upstream:
+      tag_regex: '^v(\d+\.\d+\.\d+)$'
+    commands:
+      install: |
+        mkdir -p {{ prefix }}/bin
+        install -m 0755 nfpm {{ prefix }}/bin/nfpm
     tags:
       - application
 

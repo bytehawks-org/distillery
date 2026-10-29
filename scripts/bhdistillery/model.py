@@ -86,6 +86,18 @@ def detect_arch():
         machine, "armv7" if machine.startswith("armv7") else machine)
 
 
+LIBCS = ("glibc", "musl")
+
+
+def detect_libc():
+    """The C library of this host: BH_LIBC, else musl when a musl dynamic loader is installed, else glibc."""
+    forced = os.environ.get("BH_LIBC")
+    if forced:
+        return forced
+    import glob
+    return "musl" if glob.glob("/lib/ld-musl-*") or glob.glob("/usr/lib/ld-musl-*") else "glibc"
+
+
 def publish_tag(package):
     """Role under which a package is published: library when it can be one, else its first tag."""
     tags = package.get("tags", [])
@@ -111,6 +123,7 @@ class Unit:
     context: dict = field(default_factory=dict)
     depends: list = field(default_factory=list)       # resolved Units, set by Plan
     recipe_sha256: str = ""
+    assets_sha256: str = ""                          # digest of assets/<package>/ (templates, hooks), "" without any
 
     @property
     def key(self):
@@ -134,11 +147,17 @@ class Unit:
 class Catalog:
     """config.yaml + packages.yaml with everything needed to resolve units."""
 
-    def __init__(self, config, packages, jobs=None, arch=None):
+    def __init__(self, config, packages, jobs=None, arch=None, assets_root=None, libc=None):
         self.config = config
+        self.assets_root = Path(assets_root) if assets_root else None
         self.packages = packages.get("package", {})
         self.jobs = jobs or os.cpu_count() or 1
         self.arch = arch or detect_arch()
+        self.libc = libc or detect_libc()
+        if self.libc not in LIBCS:
+            raise ModelError(f"unknown libc '{self.libc}' (use {', '.join(LIBCS)})")
+        # identity of the platform in artifact names: glibc keeps the plain arch, musl is "<arch>-musl"
+        self.platform = self.arch if self.libc == "glibc" else f"{self.arch}-{self.libc}"
 
     def package(self, name):
         if name not in self.packages:
@@ -153,9 +172,19 @@ class Catalog:
             raise ModelError(f"invalid tag '{tag}'")
         if tag not in package.get("tags", []):
             raise ModelError(f"package '{name}' is not tagged '{tag}' (tags: {package.get('tags', [])})")
-        unit = Unit(name, canonical_variant(package, variant), tag, package, select_variant(name, package, variant))
+        unit = Unit(name, canonical_variant(package, variant), tag, package,
+                    self._variant_for_arch(select_variant(name, package, variant)))
         unit.context = self._context(unit)
+        unit.assets_sha256 = assets_digest(self.assets_root, name)
         return unit
+
+    def _variant_for_arch(self, variant):
+        """`sha256` may be a map when the source differs per platform. Keys: "<arch>-<libc>" (amd64-musl) or just
+        "<arch>" (amd64); the most specific one wins. The unit sees the scalar ('' = not pinned for it: the build refuses)."""
+        pins = variant.get("sha256")
+        if isinstance(pins, dict):
+            variant = {**variant, "sha256": pins.get(f"{self.arch}-{self.libc}", pins.get(self.arch, ""))}
+        return variant
 
     def _context(self, unit):
         cfg = self.config["config"]
@@ -167,9 +196,15 @@ class Catalog:
             "tag": unit.tag,
             "jobs": self.jobs,
             "arch": self.arch,
+            "libc": self.libc,
+            "platform": self.platform,
+            "libc_name": unit.package.get("libc_map", {}).get(self.libc, self.libc),     # e.g. musl -> alpine-linux
             "full_version": v["full_version"],
             "major_version": v["major_version"],
             "patch_version": v["patch_version"],
+            "variant": v,                                  # extra variant keys, e.g. {{ variant.build }}
+            # the upstream's name for this architecture (package.arch_map), e.g. amd64 -> x64
+            "arch_name": unit.package.get("arch_map", {}).get(self.arch, self.arch),
             "git": unit.package.get("git", {}),
             "website": unit.package.get("website", ""),
             "deps_prefix": cfg["libraries"]["default_prefix"],
@@ -239,6 +274,22 @@ class Catalog:
         return sorted(found)
 
 
+def assets_digest(assets_root, package_name):
+    """Digest of every file under assets/<package>/ (relative path, mode bit, content), or "" when there are none.
+
+    Templates and hooks end up in the bundle and in the installed tree, so they belong to the recipe."""
+    if assets_root is None:
+        return ""
+    base = Path(assets_root) / package_name
+    if not base.is_dir():
+        return ""
+    digest = hashlib.sha256()
+    for path in sorted(p for p in base.rglob("*") if p.is_file()):
+        digest.update(f"{path.relative_to(base).as_posix()}\0{int(os.access(path, os.X_OK))}\0".encode())
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
 def _depth(unit):
     return 1 + max((_depth(d) for d in unit.depends), default=-1)
 
@@ -255,6 +306,9 @@ def recipe_hash(unit):
         "tag": unit.tag,
         "prefix": unit.prefix,
         "arch": unit.context["arch"],
+        "libc": unit.context["libc"],
         "depends": [d.recipe_sha256 for d in unit.depends],
     }
+    if unit.assets_sha256:                       # absent for packages without assets: their hashes do not change
+        payload["assets"] = unit.assets_sha256
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()

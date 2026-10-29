@@ -14,6 +14,14 @@ config:
   # Where built units are kept (see docs/ARTIFACTS.md). `--store` accepts these names, dir:PATH, github[:owner/repo].
   artifacts:
     default_stores: [github]
+    # Detached OpenPGP signature of every artifact sidecar (<name>.json.asc; the sidecar holds the tarball sha256 and the recipe).
+    # Sign: set `key` (or BH_SIGNING_KEY) - a key of your gpg keyring locally, an imported secret in CI.
+    # Verify: restore/chain accept only the listed signers when `require` is true. See docs/ARTIFACTS.md.
+    signing:
+      key: ""              # key id / fingerprint used to sign; empty = artifacts are not signed
+      fingerprints: []     # trusted signers: full 40-hex PRIMARY key fingerprints
+      keys: ""             # file or URL with their public keys; empty = take them from the local gpg keyring
+      require: false       # true = refuse unsigned artifacts and artifacts signed by anyone else
     stores:
       github:
         type: github                  # GitHub Actions artifacts of this repository (GITHUB_REPOSITORY, GITHUB_TOKEN)
@@ -22,3 +30,27 @@ config:
         url: https://nexus.example.com        # or NEXUS_URL; credentials: NEXUS_USER / NEXUS_PASSWORD
         repository: bytehawks
         prefix: bytehawks
+
+  # Native packages (`autobuilder.py package`, needs nfpm): see docs/PACKAGING.md.
+  packaging:
+    formats: [deb, rpm, apk]
+    release: 1                                       # package revision: deb -N, rpm release, apk -rN
+    # How packages are named. Variables: name, variant, variant_suffix ("" for the default variant), tag, arch, version,
+    # major_version, recipe12, release; in file names also pkg_name, pkg_version, pkg_arch (the format's own arch), format.
+    name_template: "bytehawks-{{ name }}{{ variant_suffix }}"
+    file_name_template:
+      deb: "{{ pkg_name }}_{{ pkg_version }}-{{ release }}_{{ pkg_arch }}.deb"
+      rpm: "{{ pkg_name }}-{{ pkg_version }}-{{ release }}.{{ pkg_arch }}.rpm"
+      apk: "{{ pkg_name }}-{{ pkg_version }}-r{{ release }}.apk"
+    maintainer: "ByteHawks <packages@example.com>"
+    vendor: ByteHawks
+    section: misc
+    # nfpm: /usr/local/bin/nfpm                      # default: BH_NFPM, then PATH
+    shaker:
+      post_install: true                             # run `shaker install <pkg>` after installation when Shaker is present
+      shaker_path: /opt/bytehawks/core/shaker/bin/shaker
+      package: ""                                    # e.g. bytehawks-shaker: make services depend on the package that provides Shaker
+    # signing:                                       # passphrase: NFPM_PASSPHRASE
+    #   deb: {key_file: /path/to/private.asc, key_id: ABCD1234}
+    #   rpm: {key_file: /path/to/private.asc}
+    #   apk: {key_file: /path/to/rsa-private.pem, key_name: bytehawks@example.com}

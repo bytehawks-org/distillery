@@ -18,6 +18,7 @@ import tarfile
 import time
 from pathlib import Path, PurePosixPath
 
+from .templates import resolve_dict_templates
 from . import __version__
 from .fetch import sha256_file
 
@@ -80,13 +81,13 @@ def write_file_list(unit, paths, destination):
     return lines
 
 
-def build_tarball(unit, rel_paths, out_dir, arch, built_epoch=None):
+def build_tarball(unit, rel_paths, out_dir, platform, built_epoch=None):
     """Deterministic tar.gz of `rel_paths` (relative to unit.prefix), stored relative to the root."""
     from .store import entry_for
 
     root = Path(unit.context["config"]["root"])
     prefix = Path(unit.prefix)
-    entry = entry_for(unit, arch)
+    entry = entry_for(unit, platform)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     tarball = out_dir / f"{entry.name}.tar.gz"
@@ -111,7 +112,7 @@ def build_tarball(unit, rel_paths, out_dir, arch, built_epoch=None):
         "schema": META_SCHEMA,
         "generator": f"distillery/{__version__}",
         "name": entry.name,
-        "package": unit.name, "variant": unit.variant, "tag": unit.tag, "arch": arch,
+        "package": unit.name, "variant": unit.variant, "tag": unit.tag, "arch": unit.context["arch"], "libc": unit.context["libc"], "platform": platform,
         "version": entry.version, "recipe_sha256": unit.recipe_sha256,
         "root": str(root), "prefix": str(prefix),
         "files": len(members),
@@ -120,7 +121,9 @@ def build_tarball(unit, rel_paths, out_dir, arch, built_epoch=None):
         "depends": [{"package": d.name, "variant": d.variant, "recipe_sha256": d.recipe_sha256} for d in unit.depends],
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch)),
     }
-    (out_dir / f"{entry.name}.json").write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+    from .store import meta_bytes
+
+    (out_dir / f"{entry.name}.json").write_bytes(meta_bytes(meta))
     return entry, tarball, meta
 
 
@@ -168,10 +171,13 @@ def verify_files(unit):
     if not listing.exists():
         return [f"{listing}: missing (unit not built by this Distillery version?)"]
     root = Path(unit.context["config"]["root"])
+    mutable = [str(Path(p)) for p in resolve_dict_templates(unit.package.get("runtime", {}), unit.context).get("mutable", [])]
     problems = []
     for line in listing.read_text().splitlines():
         digest, _, path = line.partition("  ")
         full = root / path.rstrip("/")
+        if any(str(full) == m or str(full).startswith(m + "/") for m in mutable):
+            continue                                            # rewritten by the runtime on purpose
         if path.endswith("/"):
             if not full.is_dir():
                 problems.append(f"missing directory {path}")

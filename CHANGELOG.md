@@ -3,6 +3,55 @@
 All notable changes to Distillery. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 
+## [Unreleased]
+
+### Added
+- **Binary repack: NiFi on Temurin.** `nifi` 2.9.0 (Apache `bin.zip`, nothing compiled) and `temurin` 21.0.9
+  (JRE tarball, x64 only) in the catalog; the pair was built with `--root`, then installed, initialized, started
+  and verified through Shaker (UI 200, login, REST API, `verify` 10/10). Runtime: `BH_NIFI_*` parameters
+  (port, host, proxy hosts, single-user credentials, sensitive props key, heap, data dir, JAVA_HOME), durable
+  state under `BH_NIFI_DATA_DIR`, `post_init` hook that renders the parameters into the shipped configuration.
+- **Zip sources.** `fetch.extract` handles zip archives (same traversal/link checks as tar; Unix modes restored
+  from `external_attr`, setuid/setgid/sticky dropped).
+- **Hook installation.** `assets/<pkg>/hooks/<stage>/*` is copied (executable) into the hook directory declared in
+  `runtime.hooks` when the bundle is emitted: no `post` stage copying needed.
+- **`{{ variant.<key> }}`** in templates: any extra key of the selected variant (e.g. `build: 10`).
+- **Shaker integration** ([docs/INTEGRATION.md](docs/INTEGRATION.md)), additive to bundle schema 1: `manifest.env` carries `BH_PKG_ARCH` and
+  `BH_PKG_LIBC` (also in `manifest.json`); `runtime.mutable` becomes `mutable|path` records (`verify` and Shaker's `verify --files` skip
+  them; set for NiFi's `conf/`); every build writes `bundle.sha256` over the bundle and `files.sha256` and signs it
+  (`bundle.sha256.asc`) when `artifacts.signing.key` is set; the seal is part of artifacts and packages. `packaging.shaker.package` makes
+  services depend on a package that provides Shaker (optional: without Shaker the post-install only prints what to run).
+  `manifest.env` lists the direct dependencies with their recipe (`BH_PKG_DEPENDS`) for `shaker up`.
+- **glibc and musl.** New platform dimension `libc` (`--libc`, `BH_LIBC`, detected from the host): part of the recipe hash and of the manifest;
+  artifact identity `…--amd64--…` (glibc, names unchanged) and `…--amd64-musl--…`; `sha256` maps accept `<arch>` and `<arch>-musl` keys;
+  `libc_map` / `{{ libc_name }}`, `{{ libc }}`, `{{ platform }}` in templates. Temurin is pinned for the four platforms (Alpine builds
+  included), OpenSSL's Configure target follows the architecture. `package` ties deb/rpm to glibc and apk to musl.
+  Workflows: `build.yml` now calls `build-platform.yml` once per libc (Debian and Alpine images); `ci.yml` checks that every source is
+  pinned for amd64/arm64 × glibc/musl and runs the test-suite on Alpine. Hashes of existing units change once (libc joins the recipe).
+- **Native packages.** `package` writes deb, rpm and apk of a built unit with nfpm: file list from `files.sha256`, exact-version
+  dependencies in each format's syntax, conflicts between variants, optional post-install running `shaker install`, optional package
+  signing, `SHA256SUMS`. Package and file names are templates in `config.yaml` (`packaging.name_template`, `file_name_template`,
+  `release`) with per-format architecture names. See docs/PACKAGING.md. `nfpm` 2.48.0 is a catalog unit (`build --package nfpm`, sha256 per arch); output checked with the real binary
+  (deb unpacked and run, rpm and apk metadata read). Unit tests use a stand-in and run the real binary only when it is installed.
+- Warning when an application is built into a non-empty prefix (unchanged files are not recorded in artifacts and packages);
+  `license` added to the catalog entries.
+- **Signed artifacts.** `artifacts.signing` (`key`, `fingerprints`, `keys`, `require`): a detached OpenPGP signature of the
+  artifact sidecar (`<name>.json.asc`), made by `build --artifacts-dir` when a key is configured (`BH_SIGNING_KEY`, passphrase via
+  `BH_SIGNING_PASSPHRASE_FILE`) or later with the new `sign --from DIR`; carried by the dir, GitHub and Nexus stores; verified by
+  `restore`/`chain` against pinned primary fingerprints (`require: true` refuses unsigned and foreign artifacts; a bad signature
+  is never tolerated). Same path for a local keyring and for CI (key imported from the `BH_SIGNING_PRIVATE_KEY` secret by
+  `build.yml`). Sidecars are now written by a single function (`meta_bytes`) so published copies keep verifying.
+- **GPG verification of sources** (`signature:` block, module `signature.py`): pinned signer fingerprints,
+  keys fetched into a throw-away keyring, checked before extraction in `build` and before pinning in `bump`.
+  Enabled for `nifi` (Apache KEYS) and `temurin` (Adoptium key); verified on the real releases.
+- **Per-architecture sources.** `arch_map` / `{{ arch_name }}` and `sha256: {amd64, arm64}`; `bump` recomputes
+  every architecture; `temurin` is pinned for amd64 and arm64.
+- **Assets in the recipe hash.** The content (and execute bit) of `assets/<package>/` is part of the recipe hash:
+  editing a template or hook makes the unit stale. Packages without assets keep their hash; `nginx` has assets,
+  so its hash changes once. `Catalog(..., assets_root=)`, `--assets` on every command.
+- **`bump` cross-check with sha512.** `checksum_url_template` may point to a sha256 or a sha512 file (Apache
+  publishes sha512 only); the pin stays sha256.
+
 ## [0.4.0] - 2026-10-23
 
 ### Added

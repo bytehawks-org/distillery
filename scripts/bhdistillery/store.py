@@ -52,6 +52,7 @@ class Entry:
     created_at: str = ""
     expires_at: str = ""
     sha256: str = ""
+    signer: str = ""                 # fingerprint that signed the sidecar, set when a fetch verified it
 
     @property
     def name(self):
@@ -66,8 +67,9 @@ class Entry:
                 "size": self.size, "created_at": self.created_at, "expires_at": self.expires_at}
 
 
-def entry_for(unit, arch):
-    return Entry(unit.name, unit.variant, unit.tag, arch, str(unit.variant_data["full_version"]),
+def entry_for(unit, platform):
+    """Identity of a unit; `platform` fills the arch slot of the name ("amd64", or "amd64-musl")."""
+    return Entry(unit.name, unit.variant, unit.tag, platform, str(unit.variant_data["full_version"]),
                  unit.recipe_sha256[:12])
 
 
@@ -77,6 +79,16 @@ def parse_name(name, store="", **extra):
     if len(parts) != 7 or parts[0] != PREFIX:
         return None
     return Entry(*parts[1:], store=store, **extra)
+
+
+def meta_bytes(meta):
+    """The exact bytes of an artifact sidecar: what is written, signed and verified."""
+    return (json.dumps(meta, indent=2, sort_keys=True) + "\n").encode()
+
+
+def signature_sibling(tarball):
+    """Where the detached signature of an artifact's sidecar lives next to its tarball (may not exist)."""
+    return Path(str(tarball)[:-len(".tar.gz")] + ".json.asc")
 
 
 def sha256_file(path):
@@ -90,6 +102,7 @@ def sha256_file(path):
 class Store:
     kind = "abstract"
     label = ""
+    policy = None                    # signature.ArtifactPolicy, set by open_store from config.artifacts.signing
 
     def inventory(self):
         raise NotImplementedError
@@ -108,10 +121,12 @@ class Store:
                 return candidate
         return None
 
-    def _verified(self, entry, tarball, meta):
+    def _verified(self, entry, tarball, meta, meta_file=None, sig_file=None):
         expected = meta.get("sha256") or entry.sha256
         if expected and sha256_file(tarball) != expected:
             raise StoreError(f"{entry.name}: tarball does not match its recorded sha256")
+        if self.policy is not None:
+            entry.signer = self.policy.check(entry.name, meta_file, sig_file)
         return tarball, meta
 
 
@@ -140,15 +155,20 @@ class DirStore(Store):
 
     def fetch(self, entry, dest_dir):
         tarball = Path(entry.ref)
-        meta = json.loads(tarball.with_suffix("").with_suffix(".json").read_text())
-        return self._verified(entry, tarball, meta)
+        meta_file = tarball.with_suffix("").with_suffix(".json")
+        sig_file = signature_sibling(tarball)
+        return self._verified(entry, tarball, json.loads(meta_file.read_text()), meta_file,
+                              sig_file if sig_file.exists() else None)
 
     def publish(self, entry, tarball, meta):
         self.path.mkdir(parents=True, exist_ok=True)
         target = self.path / f"{entry.name}.tar.gz"
         if Path(tarball).resolve() != target.resolve():
             shutil.copyfile(tarball, target)
-        (self.path / f"{entry.name}.json").write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+        (self.path / f"{entry.name}.json").write_bytes(meta_bytes(meta))
+        signature = signature_sibling(tarball)
+        if signature.exists() and signature.resolve() != (self.path / f"{entry.name}.json.asc").resolve():
+            shutil.copyfile(signature, self.path / f"{entry.name}.json.asc")
         return str(target)
 
 
@@ -227,9 +247,15 @@ class GithubStore(Store):
                 raise StoreError(f"{entry.name}: unexpected artifact layout {names}")
             tarball = dest_dir / f"{entry.name}.tar.gz"
             tarball.write_bytes(zf.read(tar_name))
-            meta = json.loads(zf.read(meta_name))
+            meta_file = dest_dir / f"{entry.name}.json"
+            meta_file.write_bytes(zf.read(meta_name))
+            sig_name = next((n for n in names if n.endswith(".json.asc")), None)
+            sig_file = None
+            if sig_name:
+                sig_file = dest_dir / f"{entry.name}.json.asc"
+                sig_file.write_bytes(zf.read(sig_name))
         archive.unlink()
-        return self._verified(entry, tarball, meta)
+        return self._verified(entry, tarball, json.loads(meta_file.read_text()), meta_file, sig_file)
 
     def publish(self, entry, tarball, meta):
         raise Unsupported("GitHub artifacts are uploaded by actions/upload-artifact from the --artifacts-dir "
@@ -303,16 +329,29 @@ class NexusStore(Store):
         try:
             with self._open(urllib.request.Request(self._asset_url(entry.ref))) as response, open(tarball, "wb") as out:
                 shutil.copyfileobj(response, out)
+            meta_file = dest_dir / f"{entry.name}.json"
             with self._open(urllib.request.Request(self._asset_url(entry.ref[:-len(".tar.gz")] + ".json"))) as response:
-                meta = json.load(response)
+                meta_file.write_bytes(response.read())
+            sig_file = None
+            try:
+                with self._open(urllib.request.Request(self._asset_url(entry.ref[:-len(".tar.gz")] + ".json.asc"))) as response:
+                    sig_file = dest_dir / f"{entry.name}.json.asc"
+                    sig_file.write_bytes(response.read())
+            except urllib.error.HTTPError as exc:
+                if exc.code != 404:
+                    raise
         except urllib.error.URLError as exc:
             raise StoreError(f"nexus download failed: {exc}") from exc
-        return self._verified(entry, tarball, meta)
+        return self._verified(entry, tarball, json.loads(meta_file.read_text()), meta_file, sig_file)
 
     def publish(self, entry, tarball, meta):
         base = self._path(entry)
-        for suffix, payload, ctype in ((".tar.gz", Path(tarball).read_bytes(), "application/gzip"),
-                                       (".json", json.dumps(meta, indent=2, sort_keys=True).encode(), "application/json")):
+        uploads = [(".tar.gz", Path(tarball).read_bytes(), "application/gzip"),
+                   (".json", meta_bytes(meta), "application/json")]
+        signature = signature_sibling(tarball)
+        if signature.exists():
+            uploads.append((".json.asc", signature.read_bytes(), "application/pgp-signature"))
+        for suffix, payload, ctype in uploads:
             request = urllib.request.Request(self._asset_url(base + suffix), data=payload, method="PUT",
                                              headers={"Content-Type": ctype})
             try:
@@ -325,6 +364,15 @@ class NexusStore(Store):
 # ------------------------------------------------------------------------- factory
 
 def open_store(spec, config=None):
+    """Open a store and attach the artifact signature policy of the config (if any)."""
+    from .signature import ArtifactPolicy
+
+    store = _open_store(spec, config)
+    store.policy = ArtifactPolicy.from_config(config)
+    return store
+
+
+def _open_store(spec, config=None):
     """spec: 'dir:PATH' | 'github' | 'github:owner/repo' | 'nexus' | a name from config.artifacts.stores."""
     stores = ((config or {}).get("config", {}).get("artifacts", {}) or {}).get("stores", {}) or {}
 

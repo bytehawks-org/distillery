@@ -18,15 +18,29 @@ matching change in the bundle schema / Shaker.
 | 6 | **Upstream watcher** (`outdated`, `bump`, daily workflow, PR per package) | ✅ code + tests; ⬜ first run on GitHub |
 | 6 | **Artifact stores** (dir, GitHub Actions artifacts, Nexus raw), `restore`, `publish`, `inventory` | ✅ dir/github (API listing verified); 🚧 Nexus tested on a fake server only |
 | 6 | **Affected-only build chain** (`stale`, `chain`, build workflow libs → apps) | ✅ code + tests; ⬜ first run on GitHub |
-| 6 | Installed-file inventory (`files.sha256`, `verify`) | ✅ (Shaker integration ⬜) |
+| 6 | Installed-file inventory (`files.sha256`, `verify`) | ✅ (Shaker `verify --files` ✅) |
+| 7 | **Shaker integration**: platform check, `mutable`, sealed + signed bundle, `shaker restore` (docs/INTEGRATION.md) | ✅ tested with a real NiFi chain; ✅ `shaker up` (dependency order), ⬜ Shaker as a catalog unit / package |
+| 7 | **Binary repack** (zip sources, hook install, `variant.*`): NiFi 2.9 on Temurin 21 built and run through Shaker | ✅ (x64 only; see "Binary repack gaps") |
+
+## Binary repack gaps (found building NiFi)
+
+| Item | Detail |
+|---|---|
+| ✅ Assets in the recipe hash | `assets/<pkg>/` (templates, hooks) is hashed: a hook change makes the unit stale and rebuilds it |
+| ✅ Per-arch URL/checksum | `arch_map` + `{{ arch_name }}` and `sha256: {amd64: ..., arm64: ...}`; temurin pinned for both (aarch64 hash, signature and ELF type checked, not executed: no arm64 host) |
+| ⬜ `temurin` follows upstream | no `upstream:` block: build number (`variant.build`) is not updated by `bump`; tags are `jdk-21.0.9+10` |
+| ✅ GPG signature | nifi (Apache `.asc`, KEYS) and temurin (`.sig`, key fetched by pinned fingerprint) verified; a new release manager fails until the fingerprint is reviewed |
+| 🚧 Large artifacts | measured: NiFi artifact = 803 MB (same as the zip: JAR/NAR are already compressed, gzip level 1/6/9 differ by < 1%), ~55 s to pack. Compression is not the lever; storage is: GitHub Actions quotas (≈ 0.5–1 GB on small plans) fit one NiFi at best → use Nexus/OCI for such packages |
+| ⬜ `files.sha256` vs runtime edits | `verify` flags `conf/*` the hook rewrites at every start; needs a "mutable" marker in `runtime` |
+| ⬜ NiFi extras | keystore/truststore parameters (today NiFi self-signs at start), logging to stdout, cluster mode, `nifi-toolkit`, `nifi-registry`, healthcheck on `/nifi-api` |
 
 ## 0.4 - supply chain & provenance
 
 | Item | Detail |
 |---|---|
-| ⬜ SBOM | emit CycloneDX (and SPDX) per unit: components = source + dependencies with hashes; ship as `sbom.cdx.json` in the bundle (**contract**: Shaker `verify` can report it) |
-| ⬜ Source signature verification | per variant `signature:` (URL + key/fingerprint) checked with `gpg`/`minisign`/`cosign` before extraction |
-| 🚧 Installed-file inventory | `files.sha256` + `autobuilder.py verify` done; add mode/owner and Shaker `verify --files` |
+| ⬜ SBOM | emit CycloneDX (and SPDX) per unit: components = source + dependencies with hashes; ship as `sbom.cdx.json` in the bundle and list it in `bundle.sha256` (**contract**: Shaker `verify` can report it) |
+| 🚧 Source signature verification | ✅ OpenPGP (`signature:` block, pinned signer fingerprints, checked in `build` before extraction and in `bump` before pinning; nifi, temurin); ⬜ minisign/cosign, ⬜ enforcement for the older packages (openssl, nginx, zlib, pcre2) |
+| 🚧 Installed-file inventory | ✅ `files.sha256`, `autobuilder.py verify`, Shaker `verify --files`, `mutable` paths; ⬜ mode/owner |
 | ⬜ Vulnerability gate | optional `grype`/`trivy` run on SBOM in CI; fail on severity threshold |
 | ⬜ Reproducible-build check | `build --repro`: build twice in clean dirs with `SOURCE_DATE_EPOCH`, compare file hashes |
 | ✅ Update watcher | `outdated` + `bump` + `watch-upstream.yml` |
@@ -36,22 +50,22 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| ⬜ **First real run** | execute `watch-upstream` and `build` on GitHub, fix what only the platform reveals (same-run artifact visibility, container + checkout details, PR token behaviour) |
+| ⬜ **First real run** | execute `ci`, `build` (glibc + musl legs), `watch-upstream` on GitHub, fix what only the platform reveals (same-run artifact visibility, JavaScript actions in the Alpine container, PR token behaviour): [docs/FIRST-RUN.md](docs/FIRST-RUN.md) is the checklist |
 | ⬜ Nexus on a real instance | run `publish`/`inventory`/`restore` against Nexus 3 OSS, adjust listing/pagination quirks |
 | ⬜ `prune` | remove superseded artifacts older than N days / keep last K per unit in a store; scheduled |
 | ⬜ Failure notification | open/update an issue when a scheduled build or a bump fails; weekly digest of outdated series (`newer_series`) |
 | ⬜ Auto-merge policy | opt-in auto-merge of patch bumps when ci + build are green **and** a signature check passed |
-| ⬜ Artifact signing | cosign/minisign signature of tarball + sidecar, verified by `restore` (authenticity, not only integrity) |
+| 🚧 Artifact signing | ✅ OpenPGP signature of the sidecar (tarball sha256 + recipe), local keyring or CI secret, verified by `restore`/`chain` against pinned fingerprints, `sign` command; ⬜ cosign/minisign, ⬜ signing the bundle itself, ⬜ first run in CI |
 | ⬜ More store backends | GitHub Releases (long retention), S3/MinIO, OCI registry (ORAS), Artifactory |
 | ⬜ Non-git upstreams | `upstream.type: html` (regex on an index page, e.g. nginx.org/download), `pypi`, `url-json` |
-| ⬜ Matrix per architecture | `arm64` runners in the same workflows; per-arch checksum when sources differ |
+| 🚧 Matrix per architecture | ✅ per-arch checksum when sources differ; ⬜ `arm64` runners in the same workflows |
 | ⬜ Release pins | `release.yaml`: a frozen set of recipe hashes = a reproducible, signed distribution (what Shaker deployments target) |
 
 ## 0.5 - build engine
 
 | Item | Detail |
 |---|---|
-| ⬜ Multi-arch | `arch` matrix (amd64, arm64): per-arch configure targets (replace hard-coded `linux-x86_64`), per-arch checksums only when sources differ |
+| 🚧 Multi-arch / musl | ✅ platform = arch × libc in hashes, names, manifests, pins, packaging; OpenSSL target per arch; Temurin pinned for 4 platforms; Debian + Alpine CI legs; ⬜ **real compilation on musl** (openssl, zlib, pcre2, nginx on Alpine), ⬜ NiFi on musl (native libraries of some NARs), ⬜ arm64 runners, ⬜ cross-compilation |
 | ⬜ Sandboxed builds | run stages in `bwrap`/`unshare`/container: network-less after fetch, read-only source |
 | ⬜ Parallel independent units | schedule the DAG with `--max-units`, per-unit logs |
 | ✅ Remote artifact cache | content-addressed by recipe hash (`--store`, `chain`) with dir/GitHub/Nexus backends; more backends below |
@@ -66,7 +80,7 @@ matching change in the bundle schema / Shaker.
 | Item | Detail |
 |---|---|
 | ⬜ `image` | generate a multi-stage Dockerfile / OCI image: builder stage, runtime stage (distroless/slim) with Shaker as ENTRYPOINT, labels from the manifest (version, recipe, source hashes) |
-| ⬜ `package` | produce rpm / deb / apk (nfpm) from the staged tree + bundle so legacy hosts install with their native package manager and Shaker `install` runs in post-install |
+| 🚧 `package` | ✅ deb / rpm / apk via nfpm from `files.sha256`, naming templates, exact dependencies, conflicts, Shaker post-install, package signing; ✅ real nfpm 2.48 (catalog unit): deb extracted and `java` run, rpm headers and apk `.PKGINFO` checked, NiFi chain (803 MB deb, exact `Depends`, postinst) ; ⬜ installed with dpkg/rpm/apk on real hosts, ⬜ repository metadata (apt/createrepo/APKINDEX), ⬜ musl units for Alpine, ✅ nfpm as a catalog unit (`build --package nfpm`) |
 | ⬜ `k8s` | Helm/Kustomize skeleton from `rosetta.map` and `runtime.spec` (**contract**) |
 | ⬜ Release manifest | one signed index of all bundles/versions of a release, consumed by Shaker for multi-package `up` |
 | ⬜ `docs <pkg>` | generate the parameter reference page from `runtime.env` |
@@ -91,7 +105,7 @@ matching change in the bundle schema / Shaker.
 
 ## Known gaps today (honest list)
 
-* Only `linux-x86_64` is encoded for openssl; no cross-compilation.
+* OpenSSL targets are mapped for amd64 and arm64 but only amd64 was built here; no cross-compilation.
 * Build commands are unsandboxed trusted shell.
 * No signature/SBOM; `checksum`/`bump` trust the download they just made (cross-checked with upstream's checksum when published).
 * The workflows pass `actionlint` and their commands are tested, but have not run on GitHub yet; Nexus has only been tested against a fake server.

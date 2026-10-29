@@ -18,6 +18,7 @@ Output: progress and build output on stdout, errors on stderr.
 | `--assets DIR` | `<repo>/assets` | where `assets/<package>/` live |
 | `--root DIR` | from `config.yaml` | rebase every path ([CONFIG](CONFIG.md#--root)) |
 | `--arch NAME` | detected (`amd64`, `arm64`) | architecture label, part of the recipe hash and of artifact names |
+| `--libc glibc\|musl` | detected (`BH_LIBC` overrides): musl when `/lib/ld-musl-*` exists | C library the units are built for; part of the recipe hash, of the artifact name (`amd64-musl`) and of the manifest |
 
 ## `list`
 ```
@@ -112,6 +113,15 @@ Lists the artifacts held by the stores (name, size, creation, expiry, store).
 
 ### `restore --package P [--variant V] [--tag T] [--with-deps] [--force] [--store S]...`
 Installs a unit from the stores without compiling; refuses a unit not found, an unsafe tarball, a hash mismatch or another recipe.
+
+### `package --package P [--variant V] [--tag T] [--format deb,rpm,apk] [--out DIR] [--with-deps] [--dry-run] [--nfpm PATH]`
+Writes native packages of a **built** unit (`build` or `restore` first) into `--out` (default `dist/packages`) plus `SHA256SUMS`.
+Names, release and metadata come from `packaging:` in `config.yaml`; see [PACKAGING](PACKAGING.md). `--with-deps` also packages
+the dependencies. `--dry-run` prints names, file counts and dependencies without nfpm.
+
+### `sign --from DIR [--force]`
+Signs (`<name>.json.asc`, key from `artifacts.signing.key` or `BH_SIGNING_KEY`) every artifact of `DIR` that has no
+signature yet; `--force` signs again. See [ARTIFACTS](ARTIFACTS.md#signatures).
 
 ### `publish --from DIR [--store S]... [--ignore-unsupported]`
 Pushes the artifacts of `DIR` to the stores that do not have them yet (idempotent). `github` cannot be published to from a script.

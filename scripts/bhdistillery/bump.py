@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-from . import fetch
+from . import fetch, signature
 from .templates import resolve_template
 from .upstream import in_series, variant_track
 
@@ -52,22 +52,30 @@ def fetch_checksum(unit, new_version, log=print):
     log = _quiet(log)
     with tempfile.TemporaryDirectory() as tmp:
         digest = fetch.download(url, Path(tmp) / "source", allow_unverified=True, log=log)
+        signature.verify_source(unit.package, {**unit.context, "full_version": new_version}, Path(tmp) / "source", url, log)
         template = unit.package.get("upstream", {}).get("checksum_url_template")
         if template:
             published_url = resolve_template(template, {**unit.context, "full_version": new_version,
                                                          "git": {**unit.context["git"], "release_download_url_template": url}})
             published_file = Path(tmp) / "published"
             fetch.download(published_url, published_file, allow_unverified=True, log=lambda m: None)
-            published = published_file.read_text().split()[0].lower() if published_file.read_text().strip() else ""
-            if published != digest:
-                raise BumpError(f"checksum published by upstream ({published}) differs from the downloaded "
-                                f"source ({digest}) for {url}")
+            words = published_file.read_text().split()
+            published = words[0].lower() if words else ""
+            # upstreams publish sha256 (64 hex) or sha512 (128 hex, e.g. Apache): compare like with like
+            algorithm = {64: "sha256", 128: "sha512"}.get(len(published))
+            if algorithm is None:
+                raise BumpError(f"checksum published at {published_url} is neither sha256 nor sha512")
+            actual = digest if algorithm == "sha256" else fetch.hash_file(Path(tmp) / "source", algorithm)
+            if published != actual:
+                raise BumpError(f"{algorithm} published by upstream ({published}) differs from the downloaded "
+                                f"source ({actual}) for {url}")
             log(f"checksum confirmed by upstream ({published_url.rsplit('/', 1)[-1]})")
     return url, digest
 
 
 def apply_bump(packages_file, package, variant_name, new_version, sha256):
-    """Rewrite one variant in place. Returns the (old, new) full_version."""
+    """Rewrite one variant in place. Returns the (old, new) full_version.
+    `sha256` is a string, or a {arch: sha256} map for variants pinned per architecture."""
     yaml = _yaml()
     path = Path(packages_file)
     data = yaml.load(path.read_text())

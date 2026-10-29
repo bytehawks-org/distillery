@@ -33,7 +33,10 @@ upstream tags ──► outdated ──► bump ──► PR ──► build: st
 | **Follows upstream** | scheduled GitHub workflow detects new releases (`git ls-remote`, per-variant series), bumps the catalog (new SHA-256, cross-checked with the one upstream publishes) and opens one PR per package |
 | **Rebuilds only what is affected** | catalog units are compared with the artifact stores by recipe hash: a new `zlib` makes `zlib` and `nginx` stale, not `openssl`; libraries build serially in dependency order, applications in parallel |
 | **Artifact stores** | content-addressed, deterministic tarballs; GitHub Actions artifacts today, **Nexus raw repository** implemented, any backend behind one small interface; restore instead of compile; `verify` installed files |
-| **Tested** | 63 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
+| **glibc and musl** | every unit builds for both C libraries (`--libc`, Debian and Alpine builder images): separate, content-addressed artifacts (`amd64` / `amd64-musl`), deb/rpm from glibc builds and apk from musl ones |
+| **Shaker, or not** | the bundle carries platform, `mutable` paths, a digest and an optional signature that [Shaker](https://github.com/bytehawks-org/shaker) checks (`verify --files`, `restore`); each tool also works without the other ([INTEGRATION](docs/INTEGRATION.md)) |
+| **Signed** | optional detached OpenPGP signature of every artifact (local key or CI secret); `restore`/`chain` accept only pinned signers; sources are verified too (`signature:` in the catalog) |
+| **Tested** | 108 unit/integration tests (fake GitHub and Nexus servers, real git remotes); a real chain **openssl 3.5.4 → zlib → pcre2 → nginx 1.28.0** was built from source with it |
 
 ## Layout
 
@@ -94,6 +97,8 @@ An application adds `depends_on` and a `runtime:` section (see `nginx` in `packa
 | `checksum` | download a source and print its SHA-256 for pinning |
 | `outdated` / `bump` | compare with upstream releases / update `packages.yaml` (version + verified SHA-256) |
 | `stale` / `chain` / `affected` | what the stores lack / build it in dependency order / who depends on a package |
+| `package` | deb / rpm / apk of a built unit, named by templates in `config.yaml` (needs nfpm), see [PACKAGING](docs/PACKAGING.md) |
+| `sign` | OpenPGP signature of artifacts that have none yet |
 | `inventory` / `restore` / `publish` / `verify` | list a store / install from it / push to it / check installed files |
 
 Reference: [docs/CLI.md](docs/CLI.md).
@@ -106,6 +111,9 @@ Reference: [docs/CLI.md](docs/CLI.md).
 | [PACKAGES](docs/PACKAGES.md) | complete `packages.yaml` reference (variants, git, commands, depends_on, runtime) |
 | [CONFIG](docs/CONFIG.md) | `config.yaml`, paths, `--root` |
 | [AUTOMATION](docs/AUTOMATION.md) | the scheduled workflows: watch upstream, rebuild what is affected, setup, operation |
+| [FIRST-RUN](docs/FIRST-RUN.md) | checklist for the first run of the workflows on GitHub: order, predicted results, what to do otherwise |
+| [INTEGRATION](docs/INTEGRATION.md) | Distillery + Shaker, or each alone: what Distillery emits, what Shaker checks, chain of trust, setups |
+| [PACKAGING](docs/PACKAGING.md) | deb / rpm / apk: naming templates, contents, dependencies, signing, limits |
 | [ARTIFACTS](docs/ARTIFACTS.md) | artifact format and identity, stores (dir, GitHub, Nexus), restore, integrity |
 | [CLI](docs/CLI.md) | every command and option, exit codes |
 | [BUNDLE](docs/BUNDLE.md) | the Distillery → Shaker contract: file formats, `rosetta.map`, `runtime.spec`, `manifest.*` |

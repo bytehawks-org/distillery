@@ -8,7 +8,7 @@ from pathlib import Path
 from . import bump as bumper
 from . import bundle, fetch, store as stores_mod
 from .build import DEFAULT_STAGES, STAGES, ensure_unit, restore_unit
-from .model import ModelError, publish_tag
+from .model import Catalog, ModelError, publish_tag
 from .store import MultiStore, StoreError, Unsupported, entry_for, open_store
 from .upstream import check_unit
 
@@ -96,6 +96,7 @@ def cmd_bundle(catalog, args):
     unit = catalog.unit(args.package, args.variant, args.tag)
     catalog.plan(unit)
     out = bundle.emit(unit, args.assets, args.out)
+    bundle.seal(out, catalog.config["config"], log=eprint)
     print(f"bundle written to {out}")
 
 
@@ -137,6 +138,11 @@ def cmd_outdated(catalog, args):
     return 3 if args.exit_code and any(f.outdated for f in findings) else 0
 
 
+def _raw_variant(catalog, finding):
+    from .model import select_variant
+    return select_variant(finding.package, catalog.package(finding.package), finding.variant)
+
+
 def cmd_bump(catalog, args):
     results = []
     for finding in _findings(catalog, args):
@@ -145,6 +151,14 @@ def cmd_bump(catalog, args):
         version = args.to or finding.latest
         unit = catalog.unit(finding.package, finding.variant, publish_tag(catalog.package(finding.package)))
         url, digest = bumper.fetch_checksum(unit, version, log=eprint)
+        if isinstance(_raw_variant(catalog, finding).get("sha256"), dict):          # pinned per architecture
+            digest = {}
+            for key in _raw_variant(catalog, finding)["sha256"]:             # "amd64" or "amd64-musl"
+                arch, _, libc = key.partition("-")
+                per_platform = Catalog(catalog.config, {"package": catalog.packages}, catalog.jobs, arch,
+                                       catalog.assets_root, libc or "glibc")
+                digest[key] = bumper.fetch_checksum(
+                    per_platform.unit(finding.package, finding.variant, unit.tag), version, log=eprint)[1]
         result = {"package": finding.package, "variant": finding.variant, "from": finding.current,
                   "to": version, "sha256": digest, "source": url, "newer_series": finding.newer_series}
         if not args.dry_run:
@@ -162,7 +176,7 @@ def cmd_bump(catalog, args):
 # ------------------------------------------------------------------------ artifacts
 
 def _status(unit, inventory):
-    wanted = entry_for(unit, unit.context["arch"])
+    wanted = entry_for(unit, unit.context["platform"])
     if any(e.name == wanted.name for e in inventory):
         return "present", wanted
     superseded = [e for e in inventory if e.key() == wanted.key()]
@@ -261,6 +275,35 @@ def cmd_restore(catalog, args):
         if restore_unit(item, stores, work, log=print) is None:
             raise StoreError(f"{item.name} {item.variant_data['full_version']} ({item.recipe_sha256[:12]}) "
                              "is not in any store")
+
+
+def cmd_package(catalog, args):
+    from . import packaging
+
+    conf = packaging.settings(catalog.config)
+    unit = catalog.unit(args.package, args.variant, args.tag)
+    formats = ([f for f in args.format.replace(" ", "").split(",") if f] if args.format
+               else packaging.default_formats(conf, catalog.libc))
+    bad = [f for f in formats if f not in packaging.FORMATS]
+    if bad:
+        raise packaging.PackagingError(f"unknown format(s): {', '.join(bad)} (use {', '.join(packaging.FORMATS)})")
+    if not formats:
+        raise packaging.PackagingError(f"no configured package format targets {catalog.libc} systems")
+    if catalog.config["config"]["root"] != "/opt/bytehawks":
+        eprint(f"warning: built under {catalog.config['config']['root']}: the packages install to exactly these paths "
+               "(build with the default root for packages meant for /opt/bytehawks)")
+    written = packaging.build_packages(catalog, unit, formats, args.out, conf, dry_run=args.dry_run,
+                                       with_deps=args.with_deps, nfpm=args.nfpm, log=eprint)
+    print(f"{'planned' if args.dry_run else 'wrote'} {len(written)} package(s) in {args.out}")
+    return 0
+
+
+def cmd_sign(catalog, args):
+    from .signature import sign_directory
+
+    written = sign_directory(args.source, catalog.config, force=args.force, log=eprint)
+    print(f"signed {len(written)} artifact(s)")
+    return 0
 
 
 def cmd_publish(catalog, args):

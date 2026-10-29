@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import bundle, fetch, package as artifact
+from . import bundle, fetch, package as artifact, signature
 from .templates import resolve_template
 
 STAGES = ("pre", "configure", "make", "check", "install", "post")
@@ -83,6 +83,8 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
         log(f"[plan] {title}")
         log(f"  source   {url}")
         log(f"  sha256   {unit.variant_data.get('sha256') or '(NOT PINNED)'}")
+        if unit.package.get("signature"):
+            log(f"  gpg      signers {', '.join(unit.package['signature'].get('fingerprints', []))}")
         log(f"  prefix   {unit.prefix}")
         log(f"  bundle   {unit.bundle_dir}")
         log("  ----- script -----")
@@ -91,9 +93,13 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
 
     log(f"[build] {title}")
     fetch.download(url, tarball, unit.variant_data.get("sha256", ""), allow_unverified, log)
+    signature.verify_source(unit.package, unit.context, tarball, url, log)
     fetch.extract(tarball, unit.src_dir, strip_components=unit.package.get("strip_components", 1))
 
     Path(unit.prefix).mkdir(parents=True, exist_ok=True)
+    if unit.tag == "application" and any(Path(unit.prefix).iterdir()):
+        log(f"warning: {unit.prefix} is not empty: files this build leaves unchanged are not recorded in the artifact, "
+            "the file list and the packages - build into a clean root")
     before = artifact.snapshot(unit.prefix)
     log_file = Path(cfg["log_path"]) / f"{unit.name}-{unit.variant_data['full_version']}.log"
     started = time.time()
@@ -104,11 +110,14 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     files_list = out / "files.sha256"
     artifact.write_file_list(unit, changed, files_list)       # describes everything except itself
     changed.append(str(files_list.relative_to(unit.prefix)))
+    for sealed in bundle.seal(out, cfg, log):                  # digest (and signature) of the whole bundle
+        changed.append(str(sealed.relative_to(unit.prefix)))
     log(f"[done] {title} in {time.time() - started:.0f}s, bundle: {out}, {len(changed)} paths recorded")
 
     if artifacts_dir:
-        entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["arch"])
+        entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["platform"])
         log(f"[pack] {tarball} ({meta['size']} bytes, sha256 {meta['sha256'][:12]})")
+        signature.sign_artifact(tarball.with_suffix("").with_suffix(".json"), cfg, log)
     return "built"
 
 
@@ -116,13 +125,15 @@ def restore_unit(unit, stores, work_dir, log=print):
     """Restore a unit from the first store that has its exact recipe. Returns the entry, or None."""
     from .store import entry_for
 
-    wanted = entry_for(unit, unit.context["arch"])
+    wanted = entry_for(unit, unit.context["platform"])
     for store in stores.stores:
         entry = store.find(wanted)
         if entry is None:
             continue
         log(f"[restore] {unit.name} {wanted.version} from {entry.store} ({entry.name})")
         tarball, meta = store.fetch(entry, work_dir)
+        if entry.signer:
+            log(f"[verify] {entry.name} signed by {entry.signer}")
         artifact.restore(tarball, unit.context["config"]["root"], expected_recipe=unit.recipe_sha256, log=log)
         return entry
     return None
