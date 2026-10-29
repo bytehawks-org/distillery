@@ -47,7 +47,7 @@ class LinkageModelTests(unittest.TestCase):
             from bhdistillery.model import recipe_hash
             self.assertEqual(recipe_hash(plain), recipe_hash(with_static))     # an unused `static:` block changes nothing
             self.assertEqual(with_static.context["linkage"], "dynamic")
-            self.assertEqual(with_static.context["platform"], "amd64" if plain.context["arch"] == "amd64" else plain.context["platform"])
+            self.assertEqual(with_static.context["platform"], plain.context["platform"])        # whatever this host's platform is
 
     def test_static_overrides_commands_and_env_and_changes_identity(self):
         with TempDir() as t:
