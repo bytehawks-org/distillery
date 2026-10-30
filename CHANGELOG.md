@@ -6,6 +6,7 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 ## [Unreleased]
 
 ### Added
+- **User manual** (`docs/MANUAL.md`) with outputs of real runs; docs review (stale counts and examples).
 - **Static linking.** `--linkage static` / `BH_LINKAGE`: packages with a `static:` recipe (commands/env overrides, `binaries`) are built
   without a dynamic loader; platform `amd64-static` / `amd64-musl-static`, `linkage` in the recipe hash (dynamic hashes unchanged), manifest,
   `manifest.env` and sidecar; an ELF check fails a build whose declared binaries are still dynamic. nginx, valkey (without Lua: its engine

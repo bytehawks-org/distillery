@@ -109,6 +109,7 @@ Reference: [docs/CLI.md](docs/CLI.md).
 
 | Document | Content |
 |---|---|
+| [MANUAL](docs/MANUAL.md) | **user manual**: first package, dependencies, scaffold, sources, artifacts and stores, signing, packages, platforms, with real outputs |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | modules, build pipeline, recipe hash, design decisions |
 | [PACKAGES](docs/PACKAGES.md) | complete `packages.yaml` reference (variants, git, commands, depends_on, runtime) |
 | [CONFIG](docs/CONFIG.md) | `config.yaml`, paths, `--root` |
