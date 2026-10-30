@@ -24,10 +24,17 @@ Output: progress and build output on stdout, errors on stderr.
 ## `list`
 ```
 $ autobuilder.py list
-nginx        application            deps: openssl,zlib,pcre2   stable=1.28.0
-openssl      library,application    deps: -                    old-legacy/legacy=3.0.18, stable=3.5.4, stream=3.6.0
-pcre2        library                deps: -                    all=10.43
-zlib         library                deps: -                    all=1.3.1
+cjson        library                deps: -                        all=1.7.19
+mosquitto    application            deps: openssl,cjson            stable=2.1.2
+nfpm         application            deps: -                        stable=2.48.0
+nginx        application            deps: openssl,zlib,pcre2       stable=1.28.0
+nifi         application            deps: temurin                  stable=2.9.0
+openssl      library,application    deps: -                        old-legacy/legacy=3.0.18, stable=3.5.4, stream=3.6.0
+pcre2        library                deps: -                        all=10.43
+prometheus   application            deps: -                        stable=3.15.1
+temurin      application            deps: -                        stable=21.0.9
+valkey       application            deps: openssl                  stable=9.1.3
+zlib         library                deps: -                        all=1.3.1
 ```
 
 ## `plan`
