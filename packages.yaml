@@ -118,9 +118,9 @@ package:
     variant:
       - name: stable
         major_version: 1.28
-        patch_version: 0
-        full_version: 1.28.0
-        sha256: c6b5c6b086c0df9d3ca3ff5e084c1d0ef909e6038279c71c1c3e985f576ff76a
+        patch_version: 3
+        full_version: 1.28.3
+        sha256: 2c96a946bfb0882a21744ed429770a2123ae1828c7c48665092993ddee91a918
     license: BSD-2-Clause
     website: https://nginx.org/
     depends_on:
