@@ -85,7 +85,7 @@ recipe_sha256(unit) = SHA256( json(sort_keys){
 `built_at` is deliberately not part of the hash. `SOURCE_DATE_EPOCH` fixes it for reproducible manifests.
 
 ### Artifacts, stores, automation (0.4)
-The recipe hash is also the **cache key**: `bh--<pkg>--<variant>--<tag>--<arch>--<version>--<recipe12>`
+The recipe hash is also the **cache key**: `bh_<pkg>_<variant>_<tag>_<arch>_<version>_<recipe12>`
 names an artifact in a store, so "what is stale?" is a set difference between the catalog and a store listing
 ([ARTIFACTS](ARTIFACTS.md)). `build` can restore instead of compile (`ensure_unit`: up to date → skip, in a
 store → restore, else build); `chain` applies that to every stale unit in dependency order. GitHub Actions

@@ -169,7 +169,9 @@ def sign_directory(directory, config, force=False, log=print):
     if not settings["key"]:
         raise SignatureError("no signing key: set artifacts.signing.key or BH_SIGNING_KEY")
     written = []
-    for meta_file in sorted(Path(directory).glob("bh--*.json")):
+    from .store import SEP, holder_of
+
+    for meta_file in sorted(Path(directory).glob(f"{holder_of(config)}{SEP}*.json")):
         if Path(str(meta_file) + ".asc").exists() and not force:
             continue
         written.append(sign_artifact(meta_file, config, log))

@@ -7,18 +7,20 @@ is a place that keeps artifacts and can list them.
 ## Identity
 
 ```
-bh--<package>--<variant>--<tag>--<arch>--<version>--<recipe12>
-bh--nginx--stable--application--amd64--1.28.3--a1146e116dea
+<holder>_<package>_<variant>_<tag>_<platform>_<version>_<recipe12>
+bh_nginx_stable_application_amd64_1.28.3_a1146e116dea
 ```
 
+* `holder` = `config.artifacts.holder` (default `bh`, ByteHawks; `BH_HOLDER` overrides): who owns the artifacts. A store only lists the names of
+  its holder, so several projects can share one repository or Nexus without seeing each other's artifacts. Lowercase letters, digits, `.` and single `-`.
 * `recipe12` = first 12 hex of the unit's recipe hash. Same name ⇔ same recipe, same prefix, same
   dependencies, same architecture. Changing a flag, the source hash or a dependency changes the name.
-* `arch` is the **platform**: the plain architecture for glibc (`amd64`, so existing names do not change) and
+* `arch` is the **platform**: the plain architecture for glibc (`amd64`) and
   `<arch>-musl` for musl (`amd64-musl`, `arm64-musl`). A static build appends `-static` (`amd64-static`, `amd64-musl-static`, see [STATIC](STATIC.md)). A glibc and a musl build of the same recipe are two artifacts and can live in
   the same store. The sidecar records `arch`, `libc`, `linkage` and `platform`.
 * `variant` is the first alias of the variant (`old-legacy`, not `legacy`).
-* Names contain neither `/` nor `:` nor `|` and fit GitHub's artifact-name rules; the separator is `--`
-  (package and variant names must not contain it).
+* Names contain neither `/` nor `:` nor `|` and fit GitHub's artifact-name rules; the separator is `_`, so a field may
+  contain hyphens and dots (`old-legacy`, `amd64-musl-static`) but never `_`: a name that would contain one is refused with an error (no name ever contains `--`).
 * "Is this exact build available?" is answered from a **listing alone** - no download.
 
 Status used by `stale`:
@@ -88,7 +90,7 @@ shared NFS. `publish` copies, `inventory` lists, nothing else needed.
 ### `github` - GitHub Actions artifacts
 | | |
 |---|---|
-| Listing | `GET /repos/{repo}/actions/artifacts` (paginated, expired ones ignored, newest wins) filtered on the `bh--` prefix |
+| Listing | `GET /repos/{repo}/actions/artifacts` (paginated, expired ones ignored, newest wins) filtered on the holder prefix (`bh_`) |
 | Download | `GET .../artifacts/{id}/zip` → 302 → signed blob URL. The token is **never forwarded** to the redirect target (tested). The zip holds the tarball and the sidecar |
 | Upload | `actions/upload-artifact@v4` on `dist/<name>.*` in the workflow (there is no script-friendly upload API); `publish --store github` is therefore refused (use `--ignore-unsupported` in pipelines) |
 | Auth | `GITHUB_TOKEN` or `GH_TOKEN` with `actions: read`; repository from `GITHUB_REPOSITORY` or `github:owner/repo` |

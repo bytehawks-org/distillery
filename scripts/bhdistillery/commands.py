@@ -272,7 +272,7 @@ def cmd_stale(catalog, args):
         with open(args.github_output, "a") as handle:
             handle.write(f"libs={json.dumps({'include': libs})}\napps={json.dumps({'include': apps})}\n")
             handle.write(f"has_libs={'true' if libs else 'false'}\nhas_apps={'true' if apps else 'false'}\n")
-            handle.write(f"count={len(stale)}\n")
+            handle.write(f"count={len(stale)}\nholder={stores_mod.holder_of(catalog.config)}\n")
 
     shown = rows if args.all else stale
     emit(args, shown, [f"{r['status']:10} {r['package']:10} {r['variant']:12} {r['tag']:11} {r['version']:10} {r['recipe12']}"

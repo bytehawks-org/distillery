@@ -3,9 +3,11 @@
 An artifact is the set of files one unit installed plus its bundle, as a deterministic tar.gz, with a
 JSON sidecar (sha256 of the tarball, manifest). Its identity is encoded in the name:
 
-    bh--<package>--<variant>--<tag>--<arch>--<version>--<recipe12>
+    <holder>_<package>_<variant>_<tag>_<platform>_<version>_<recipe12>        e.g.  bh_nginx_stable_application_amd64_1.28.0_a1146e116dea
 
-so a store can answer "is this exact recipe already built?" from a listing alone.
+so a store can answer "is this exact recipe already built?" from a listing alone. `_` separates the fields, so none of them may contain
+one (hyphens and dots are fine: `old-legacy`, `amd64-musl-static`, `1.28.0`); the holder - who owns the artifacts, `bh` for ByteHawks - is
+`config.artifacts.holder`.
 
 Backends
   dir:PATH   a directory (workflow-local `dist/`, tests, air-gapped sharing)
@@ -17,6 +19,7 @@ Backends
 import hashlib
 import json
 import os
+import re
 import shutil
 import urllib.error
 import urllib.parse
@@ -25,8 +28,9 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-PREFIX = "bh"
-SEP = "--"
+DEFAULT_HOLDER = "bh"
+SEP = "_"
+HOLDER_RE = re.compile(r"^[a-z0-9]+([.-][a-z0-9]+)*$")          # no "_" (the separator), no "--", no leading or trailing hyphen
 CHUNK = 1024 * 256
 
 
@@ -38,6 +42,15 @@ class Unsupported(StoreError):
     pass
 
 
+def holder_of(config):
+    """The holder identifier of a loaded config (`config.artifacts.holder`, default "bh"), validated."""
+    holder = os.environ.get("BH_HOLDER") or (((config or {}).get("config", {}).get("artifacts", {}) or {}).get("holder")) or DEFAULT_HOLDER
+    holder = str(holder)
+    if not HOLDER_RE.match(holder):
+        raise StoreError(f"artifacts.holder '{holder}' is not valid: lowercase letters, digits, '.' and single '-' (never '_')")
+    return holder
+
+
 @dataclass
 class Entry:
     package: str
@@ -46,6 +59,7 @@ class Entry:
     arch: str
     version: str
     recipe12: str
+    holder: str = DEFAULT_HOLDER
     store: str = ""
     ref: str = ""                    # backend specific: artifact id, path, file
     size: int = 0
@@ -54,9 +68,15 @@ class Entry:
     sha256: str = ""
     signer: str = ""                 # fingerprint that signed the sidecar, set when a fetch verified it
 
+    def __post_init__(self):
+        for label, value in (("holder", self.holder), ("package", self.package), ("variant", self.variant), ("tag", self.tag),
+                             ("platform", self.arch), ("version", self.version), ("recipe", self.recipe12)):
+            if SEP in value or not value:
+                raise StoreError(f"artifact {label} '{value}' cannot be part of a name: it is empty or contains '{SEP}', the field separator")
+
     @property
     def name(self):
-        return SEP.join((PREFIX, self.package, self.variant, self.tag, self.arch, self.version, self.recipe12))
+        return SEP.join((self.holder, self.package, self.variant, self.tag, self.arch, self.version, self.recipe12))
 
     def key(self):
         return (self.package, self.variant, self.tag, self.arch)
@@ -70,15 +90,15 @@ class Entry:
 def entry_for(unit, platform):
     """Identity of a unit; `platform` fills the arch slot of the name ("amd64", or "amd64-musl")."""
     return Entry(unit.name, unit.variant, unit.tag, platform, str(unit.variant_data["full_version"]),
-                 unit.recipe_sha256[:12])
+                 unit.recipe_sha256[:12], holder=holder_of({"config": unit.context["config"]}))
 
 
-def parse_name(name, store="", **extra):
-    """Inverse of Entry.name; None when the name is not one of ours."""
+def parse_name(name, store="", holder=DEFAULT_HOLDER, **extra):
+    """Inverse of Entry.name; None when the name is not one of `holder`'s."""
     parts = name.split(SEP)
-    if len(parts) != 7 or parts[0] != PREFIX:
+    if len(parts) != 7 or parts[0] != holder or not all(parts):
         return None
-    return Entry(*parts[1:], store=store, **extra)
+    return Entry(*parts[1:], holder=holder, store=store, **extra)
 
 
 def meta_bytes(meta):
@@ -103,6 +123,7 @@ class Store:
     kind = "abstract"
     label = ""
     policy = None                    # signature.ArtifactPolicy, set by open_store from config.artifacts.signing
+    holder = DEFAULT_HOLDER          # set by open_store from config.artifacts.holder
 
     def inventory(self):
         raise NotImplementedError
@@ -143,8 +164,8 @@ class DirStore(Store):
         entries = []
         if not self.path.is_dir():
             return entries
-        for meta_file in sorted(self.path.glob(f"{PREFIX}{SEP}*.json")):
-            entry = parse_name(meta_file.stem, store=self.label, ref=str(meta_file.with_suffix(".tar.gz")))
+        for meta_file in sorted(self.path.glob(f"{self.holder}{SEP}*.json")):
+            entry = parse_name(meta_file.stem, store=self.label, holder=self.holder, ref=str(meta_file.with_suffix(".tar.gz")))
             tarball = Path(entry.ref) if entry else None
             if entry and tarball.exists():
                 meta = json.loads(meta_file.read_text())
@@ -213,7 +234,7 @@ class GithubStore(Store):
             except urllib.error.URLError as exc:
                 raise StoreError(f"github artifacts listing failed: {exc}") from exc
             for artifact in data.get("artifacts", []):
-                entry = parse_name(artifact["name"], store=self.label, ref=str(artifact["id"]),
+                entry = parse_name(artifact["name"], store=self.label, holder=self.holder, ref=str(artifact["id"]),
                                    size=artifact.get("size_in_bytes", 0), created_at=artifact.get("created_at", ""),
                                    expires_at=artifact.get("expires_at", ""))
                 if entry and not artifact.get("expired"):
@@ -313,7 +334,7 @@ class NexusStore(Store):
                 path = asset.get("path", "")
                 if not path.startswith(self.prefix + "/") or not path.endswith(".tar.gz"):
                     continue
-                entry = parse_name(path.rsplit("/", 1)[-1][:-len(".tar.gz")], store=self.label, ref=path,
+                entry = parse_name(path.rsplit("/", 1)[-1][:-len(".tar.gz")], store=self.label, holder=self.holder, ref=path,
                                    sha256=(asset.get("checksum") or {}).get("sha256", ""),
                                    created_at=asset.get("lastModified", "") or "")
                 if entry:
@@ -369,6 +390,7 @@ def open_store(spec, config=None):
 
     store = _open_store(spec, config)
     store.policy = ArtifactPolicy.from_config(config)
+    store.holder = holder_of(config)
     return store
 
 

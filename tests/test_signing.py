@@ -40,7 +40,7 @@ class Keyring:
             os.environ["GNUPGHOME"] = self._saved
 
 
-def artifact_files(directory, name="bh--demo--stable--library--amd64--1.0--abcdef012345"):
+def artifact_files(directory, name="bh_demo_stable_library_amd64_1.0_abcdef012345"):
     """A tarball + sidecar the way build_tarball writes them."""
     directory.mkdir(parents=True, exist_ok=True)
     tarball = directory / f"{name}.tar.gz"
@@ -142,7 +142,7 @@ class SigningTests(unittest.TestCase):
     def test_sign_directory_signs_only_what_is_unsigned(self):
         with TempDir() as t, Keyring(t) as ring:
             artifact_files(t / "dist")
-            artifact_files(t / "dist", "bh--demo2--stable--library--amd64--1.0--abcdef012345")
+            artifact_files(t / "dist", "bh_demo2_stable_library_amd64_1.0_abcdef012345")
             config = {"config": {"artifacts": {"signing": {"key": ring.fingerprint}}}}
             first = signature.sign_directory(t / "dist", config, log=lambda m: None)
             self.assertEqual(len(first), 2)

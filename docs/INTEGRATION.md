@@ -44,7 +44,7 @@ BH_SIGNING_KEY=<fpr> autobuilder.py build --package nifi --with-deps --artifacts
 
 # 2. target host or container image: only Shaker is needed
 export BH_SHAKER_TRUSTED_FINGERPRINTS=<primary fingerprint> BH_SHAKER_REQUIRE_SIGNATURE=true
-shaker restore dist/bh--temurin--...tar.gz && shaker restore dist/bh--nifi--...tar.gz
+shaker restore dist/bh_temurin_...tar.gz && shaker restore dist/bh_nifi_...tar.gz
 shaker up nifi --run                              # temurin first, then nifi: install + init + start; parameters: BH_NIFI_PASSWORD, BH_NIFI_SENSITIVE_PROPS_KEY, ...
 shaker verify nifi --files --require-signature    # audit at any time
 

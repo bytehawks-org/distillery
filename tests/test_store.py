@@ -22,12 +22,60 @@ def artifact(tmp, e, payload=b"payload"):
 class NamingTests(unittest.TestCase):
     def test_roundtrip_and_foreign_names(self):
         e = entry("3.5.4", "0123456789ab")
-        self.assertEqual(e.name, "bh--demo--stable--library--amd64--3.5.4--0123456789ab")
+        self.assertEqual(e.name, "bh_demo_stable_library_amd64_3.5.4_0123456789ab")
+        self.assertNotIn("--", e.name)
         parsed = store.parse_name(e.name)
         self.assertEqual((parsed.package, parsed.variant, parsed.tag, parsed.arch, parsed.version, parsed.recipe12),
                          ("demo", "stable", "library", "amd64", "3.5.4", "0123456789ab"))
-        for foreign in ("coverage-report", "bh--too--few", "x--demo--stable--library--amd64--1--a"):
+        for foreign in ("coverage-report", "bh_too_few", "x_demo_stable_library_amd64_1_a", "bh__stable_library_amd64_1_a_b",
+                        "bh--demo--stable--library--amd64--3.5.4--0123456789ab"):
             self.assertIsNone(store.parse_name(foreign))
+
+    def test_hyphens_inside_fields_survive_the_roundtrip(self):
+        e = store.Entry("php-fpm", "old-legacy", "application", "amd64-musl-static", "8.3.1", "abcdef012345")
+        self.assertEqual(e.name, "bh_php-fpm_old-legacy_application_amd64-musl-static_8.3.1_abcdef012345")
+        self.assertEqual(store.parse_name(e.name).arch, "amd64-musl-static")
+
+    def test_holder_is_part_of_the_name_and_of_the_parse(self):
+        e = store.Entry("demo", "stable", "library", "amd64", "1.0", "abcdef012345", holder="acme")
+        self.assertEqual(e.name, "acme_demo_stable_library_amd64_1.0_abcdef012345")
+        self.assertIsNone(store.parse_name(e.name))                              # default holder is bh
+        self.assertEqual(store.parse_name(e.name, holder="acme").holder, "acme")
+        self.assertIsNone(store.parse_name("bh_demo_stable_library_amd64_1.0_abcdef012345", holder="acme"))
+
+    def test_a_field_with_the_separator_is_refused(self):
+        with self.assertRaises(store.StoreError):
+            store.Entry("my_pkg", "stable", "library", "amd64", "1.0", "abcdef012345")
+        with self.assertRaises(store.StoreError):
+            store.Entry("demo", "stable", "library", "amd64", "1.0_rc1", "abcdef012345")
+
+    def test_holder_from_config(self):
+        self.assertEqual(store.holder_of({}), "bh")
+        self.assertEqual(store.holder_of({"config": {"artifacts": {"holder": "acme-corp"}}}), "acme-corp")
+        for bad in ("a_b", "Acme", "a--b", "-a", "a-", "a b"):
+            with self.assertRaises(store.StoreError):
+                store.holder_of({"config": {"artifacts": {"holder": bad}}})
+
+
+class HolderEndToEndTests(unittest.TestCase):
+    def test_a_configured_holder_names_builds_and_scopes_the_store(self):
+        import copy
+        from bhdistillery.build import build_unit
+        from bhdistillery.model import Catalog, apply_root
+        with TempDir() as t:
+            digest = make_tarball(t / "d.tgz", {"README": "x"}, top="demo-1.0")
+            config = copy.deepcopy(CONFIG)
+            config["config"]["artifacts"] = {"holder": "acme"}
+            cat = Catalog(apply_root(config, t / "root"), {"package": {"demo": package((t / "d.tgz").as_uri(), digest)}}, jobs=1)
+            unit = cat.unit("demo")
+            cat.plan(unit)
+            build_unit(unit, t / "assets", artifacts_dir=t / "dist", log=lambda m: None)
+            names = sorted(p.name for p in (t / "dist").iterdir())
+            self.assertTrue(all(n.startswith("acme_demo_stable_application_") for n in names), names)
+            self.assertFalse(any("--" in n for n in names))
+            acme = store.open_store(f"dir:{t / 'dist'}", config)
+            self.assertEqual([e.holder for e in acme.inventory()], ["acme"])
+            self.assertEqual(store.open_store(f"dir:{t / 'dist'}", {"config": {}}).inventory(), [])        # another holder's namespace
 
 
 class DirStoreTests(unittest.TestCase):
