@@ -7,12 +7,15 @@ is a place that keeps artifacts and can list them.
 ## Identity
 
 ```
-<holder>_<package>_<variant>_<tag>_<platform>_<version>_<recipe12>
-bh_nginx_stable_application_amd64_1.28.3_a1146e116dea
+<package>_<holder>_<variant>_<tag>_<platform>_<version>_<recipe12>
+nginx_bh_stable_application_amd64_1.28.3_a1146e116dea
 ```
 
 * `holder` = `config.artifacts.holder` (default `bh`, ByteHawks; `BH_HOLDER` overrides): who owns the artifacts. A store only lists the names of
   its holder, so several projects can share one repository or Nexus without seeing each other's artifacts. Lowercase letters, digits, `.` and single `-`.
+  The holder sits right after the package name (`nginx_bh_stable_...`), so the names of one package stay together in a listing. Put it elsewhere with
+  `config.artifacts.name_order` (a permutation of `package holder variant tag platform version recipe12`), e.g. next to the version:
+  `[package, variant, tag, platform, version, holder, recipe12]` gives `nginx_stable_application_amd64_1.28.0_bh_a1146e116dea`.
 * `recipe12` = first 12 hex of the unit's recipe hash. Same name ⇔ same recipe, same prefix, same
   dependencies, same architecture. Changing a flag, the source hash or a dependency changes the name.
 * `arch` is the **platform**: the plain architecture for glibc (`amd64`) and
@@ -90,7 +93,7 @@ shared NFS. `publish` copies, `inventory` lists, nothing else needed.
 ### `github` - GitHub Actions artifacts
 | | |
 |---|---|
-| Listing | `GET /repos/{repo}/actions/artifacts` (paginated, expired ones ignored, newest wins) filtered on the holder prefix (`bh_`) |
+| Listing | `GET /repos/{repo}/actions/artifacts` (paginated, expired ones ignored, newest wins) filtered on the holder field (pattern `*_bh_*_*_*_*_*`) |
 | Download | `GET .../artifacts/{id}/zip` → 302 → signed blob URL. The token is **never forwarded** to the redirect target (tested). The zip holds the tarball and the sidecar |
 | Upload | `actions/upload-artifact@v4` on `dist/<name>.*` in the workflow (there is no script-friendly upload API); `publish --store github` is therefore refused (use `--ignore-unsupported` in pipelines) |
 | Auth | `GITHUB_TOKEN` or `GH_TOKEN` with `actions: read`; repository from `GITHUB_REPOSITORY` or `github:owner/repo` |

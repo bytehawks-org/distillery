@@ -133,10 +133,10 @@ Build, with the dependency first (`--with-deps`), and keep an artifact of each u
 $ ab build --package demoweb --with-deps --artifacts-dir dist
 [build] demolib 2.0 (all, library)
 [done] demolib 2.0 (all, library) in 0s, bundle: /tmp/dw/deps/.bytehawks/demolib, 11 paths recorded
-[pack] dist/bh_demolib_all_library_amd64_2.0_9643d43809df.tar.gz (1274 bytes, sha256 f95216bac6fb)
+[pack] dist/demolib_bh_all_library_amd64_2.0_9643d43809df.tar.gz (1274 bytes, sha256 f95216bac6fb)
 [build] demoweb 1.0 (stable, application)
 [done] demoweb 1.0 (stable, application) in 0s, bundle: /tmp/dw/demoweb/.bytehawks, 13 paths recorded
-[pack] dist/bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f.tar.gz (2139 bytes, sha256 df9739763ee4)
+[pack] dist/demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f.tar.gz (2139 bytes, sha256 df9739763ee4)
 ```
 
 Builds are **idempotent**: the same command again prints `[skip] demoweb 1.0: bundle up to date (7d0eaad55e4f)`. `--force`
@@ -321,19 +321,19 @@ refuses a value that differs. The scheduled workflow does this daily and opens o
 An artifact is what lets the next build, or another machine, skip the compilation.
 
 ```
-bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f.tar.gz     the tree, deterministic (sorted, zeroed times/owners)
-bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f.json       sidecar: package, platform, recipe, tarball sha256, size, ...
-bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f.json.asc   optional detached signature of the sidecar
+demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f.tar.gz     the tree, deterministic (sorted, zeroed times/owners)
+demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f.json       sidecar: package, platform, recipe, tarball sha256, size, ...
+demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f.json.asc   optional detached signature of the sidecar
 ```
 
-`<holder>_<package>_<variant>_<tag>_<platform>_<version>_<recipe12>` (`holder` = `artifacts.holder`, `bh` by default): the name **is** the identity. Stores are chosen with
+`<package>_<holder>_<variant>_<tag>_<platform>_<version>_<recipe12>` (`holder` = `artifacts.holder`, `bh` by default): the name **is** the identity. Stores are chosen with
 `--store SPEC` (repeatable, first match wins) or `artifacts.default_stores`: `dir:PATH`, `github[:owner/repo]`, `nexus`
 ([ARTIFACTS](ARTIFACTS.md)).
 
 ```console
 $ ab publish --from dist --store dir:store
-[push] bh_demolib_all_library_amd64_2.0_9643d43809df -> store/bh_demolib_all_library_amd64_2.0_9643d43809df.tar.gz
-[push] bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f -> store/bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f.tar.gz
+[push] demolib_bh_all_library_amd64_2.0_9643d43809df -> store/demolib_bh_all_library_amd64_2.0_9643d43809df.tar.gz
+[push] demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f -> store/demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f.tar.gz
 published 2 artifact(s)
 
 $ ab inventory --store dir:store
@@ -357,10 +357,10 @@ On another machine - or after wiping the root - `restore` installs a unit and it
 
 ```console
 $ ab restore --package demoweb --with-deps --store dir:store
-[restore] demolib 2.0 from dir:store (bh_demolib_all_library_amd64_2.0_9643d43809df)
-[verify] bh_demolib_all_library_amd64_2.0_9643d43809df signed by A7F44A4763E0F51B851548BA70F9957CE632215A
+[restore] demolib 2.0 from dir:store (demolib_bh_all_library_amd64_2.0_9643d43809df)
+[verify] demolib_bh_all_library_amd64_2.0_9643d43809df signed by A7F44A4763E0F51B851548BA70F9957CE632215A
 restored 12 entries into /tmp/dw
-[restore] demoweb 1.0 from dir:store (bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f)
+[restore] demoweb 1.0 from dir:store (demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f)
 ...
 $ ab verify --package demoweb --with-deps          # every installed file against files.sha256
 ok   demolib 2.0 (0 problem(s))
@@ -392,7 +392,7 @@ $ ab build --package demoweb --with-deps --artifacts-dir dist
 [build] demolib 2.0 (all, library)
 [sign] bundle.sha256.asc with A7F44A4763E0F51B851548BA70F9957CE632215A
 ...
-[sign] bh_demoweb_stable_application_amd64_1.0_7d0eaad55e4f.json.asc with A7F44A4763E0F51B851548BA70F9957CE632215A
+[sign] demoweb_bh_stable_application_amd64_1.0_7d0eaad55e4f.json.asc with A7F44A4763E0F51B851548BA70F9957CE632215A
 ```
 
 Use a dedicated signing subkey with the primary key offline, and pin the **primary** fingerprint everywhere. Trust is always

@@ -25,7 +25,7 @@ Legend: ☐ to do · every step is non-destructive (artifacts expire, pull reque
 3. Set the repository variables `BH_BUILDER_IMAGE=ghcr.io/<owner>/bytehawks-builder:glibc` and `BH_BUILDER_IMAGE_MUSL=ghcr.io/<owner>/bytehawks-builder:musl`.
    The next `build` logs `toolchain already present`, and every manifest records the image in `toolchain.builder_image`. Details: [BUILDER-IMAGES](BUILDER-IMAGES.md).
 
-Artifact names are `bh_<package>_<variant>_<tag>_<platform>_<version>_<recipe12>` (`bh` = `artifacts.holder`; the repository variable `BH_HOLDER` overrides it).
+Artifact names are `<package>_bh_<variant>_<tag>_<platform>_<version>_<recipe12>` (`bh` = `artifacts.holder`; the repository variable `BH_HOLDER` overrides it).
 
 Evidence to keep for every step: the run URL, the first failing log line, and the fix commit.
 
@@ -47,7 +47,7 @@ Stop here until `ci` is green. Everything after assumes it.
 ☐ Actions → build → *Run workflow* on the branch: `packages = zlib`, `force = true`, `reason = first run`.
 
 Predicted: one `build` run with two reusable-workflow legs, `platform (glibc)` and `platform (musl)`, each `plan → libs`
-(no apps). Artifacts `bh_zlib_all_library_amd64_1.3.1_…` and `bh_zlib_all_library_amd64-musl_1.3.1_…`.
+(no apps). Artifacts `zlib_bh_all_library_amd64_1.3.1_…` and `zlib_bh_all_library_amd64-musl_1.3.1_…`.
 
 | ☐ | Check | Predicted | If not |
 |---|---|---|---|

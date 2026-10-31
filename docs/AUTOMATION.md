@@ -48,7 +48,7 @@ for that platform; artifact names carry it (`…_amd64_…` / `…_amd64-musl_�
 |---|---|---|
 | `plan` | always | `stale --github-output`: compares every catalog unit with `--store github [--store nexus]`; outputs the stale libraries and applications as matrices, in dependency order; writes the plan to the run summary |
 | builder images | on `docker/` changes, weekly | `builder-images.yml` builds and pushes the images that the jobs below can start from ([BUILDER-IMAGES](BUILDER-IMAGES.md)) |
-| `libs` | if any stale library | **serial** matrix (`max-parallel: 1`), `chain --package P --variant V --kind library`: builds the unit, restoring its (already built) dependencies from the store; `verify` the installed files against `files.sha256`; uploads `bh_<pkg>_<variant>_<tag>_<arch>_<version>_<recipe12>` |
+| `libs` | if any stale library | **serial** matrix (`max-parallel: 1`), `chain --package P --variant V --kind library`: builds the unit, restoring its (already built) dependencies from the store; `verify` the installed files against `files.sha256`; uploads `<pkg>_bh_<variant>_<tag>_<arch>_<version>_<recipe12>` |
 | `apps` | after `libs` (also if it was skipped), never after a failure | parallel matrix, same, for applications; libraries come from the store (including those uploaded seconds ago by `libs`) |
 | `publish-nexus` | if the variable `NEXUS_URL` is set | downloads the run's artifacts and `publish --store nexus` |
 

@@ -51,7 +51,8 @@ config:
 ```yaml
 config:
   artifacts:
-    holder: bh                        # first field of every artifact name (bh_<package>_...); BH_HOLDER overrides
+    holder: bh                        # a field of every artifact name (nginx_bh_stable_...); BH_HOLDER overrides
+    # name_order: [package, holder, variant, tag, platform, version, recipe12]   # layout of the name: any permutation
     default_stores: [github]          # used by stale/inventory/chain/restore/publish when --store is absent
     stores:
       github: {type: github}          # repo from GITHUB_REPOSITORY (or `repo: owner/name`), token GITHUB_TOKEN/GH_TOKEN

@@ -2,7 +2,7 @@ name: build-platform
 
 # The build pipeline for ONE platform (C library): plan -> libs -> apps -> publish. Called by build.yml once per libc
 # (glibc on Debian, musl on Alpine); see that file for the triggers. Artifact names carry the platform
-# (bh_<package>_..._amd64_... for glibc, ..._amd64-musl_... for musl; `bh` = artifacts.holder), so both live in the same stores.
+# (<package>_bh_<variant>_<tag>_amd64_... for glibc, ..._amd64-musl_... for musl; `bh` = artifacts.holder), so both live in the same stores.
 #
 #   plan  ->  libs (serial, topological)  ->  apps (parallel)  ->  publish to Nexus (optional)
 #
@@ -42,7 +42,7 @@ jobs:
       has_libs: ${{ steps.stale.outputs.has_libs }}
       has_apps: ${{ steps.stale.outputs.has_apps }}
       count: ${{ steps.stale.outputs.count }}
-      holder: ${{ steps.stale.outputs.holder }}
+      pattern: ${{ steps.stale.outputs.pattern }}      # matches this holder's artifact names
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -234,7 +234,7 @@ jobs:
       - run: pip install -r scripts/requirements.txt
       - uses: actions/download-artifact@v4
         with:
-          pattern: ${{ needs.plan.outputs.holder }}_*
+          pattern: ${{ needs.plan.outputs.pattern }}
           path: dist
           merge-multiple: true
       - name: Publish to Nexus
