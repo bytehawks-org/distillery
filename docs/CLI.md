@@ -62,6 +62,8 @@ $ autobuilder.py repro --package zlib --root /tmp/stage --sandbox auto
 reproducible: zlib 1.3.1, 11 paths identical in two builds
 ```
 
+Measured: `zlib` (11 paths) and `nginx` 1.28.0 with its openssl and pcre2 (22 paths) are bit-identical in two builds on Ubuntu 24.04 / gcc 13 in the `unshare` sandbox.
+
 ## `build`
 
 | Option | |
