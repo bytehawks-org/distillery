@@ -17,6 +17,7 @@ Two ways to start the service:
           persistence are refused.
 """
 
+import calendar
 import gzip
 import hashlib
 import io
@@ -199,9 +200,9 @@ def tree_paths(unit):
     return paths
 
 
-def _entry(archive, name, source, mode, uid, gid, is_dir, extra=None):
+def _entry(archive, name, source, mode, uid, gid, is_dir, extra=None, mtime=0):
     info = tarfile.TarInfo(name)
-    info.mtime, info.uid, info.gid, info.uname, info.gname = 0, uid, gid, "", ""
+    info.mtime, info.uid, info.gid, info.uname, info.gname = mtime, uid, gid, "", ""
     if is_dir:
         info.type, info.mode = tarfile.DIRTYPE, mode
         archive.addfile(info)
@@ -217,17 +218,23 @@ def _entry(archive, name, source, mode, uid, gid, is_dir, extra=None):
             archive.addfile(info, handle)
 
 
-def write_layer(work, label, entries, rules):
+def write_layer(work, label, entries, rules, mtime=0, base=None):
     """entries: [(path in the image, is_dir, content bytes or None, mode or None, source path or None)]; without a source the
     file is read from the same path on this host. Returns (blob path, digest, diff_id, size)."""
     work = Path(work)
     plain = work / f"{label}.tar"
     members = {path: (is_dir, extra, mode, source) for path, is_dir, extra, mode, source in entries}
-    # every ancestor directory below the filesystem root, so the layer can be applied on an empty base
+    # every ancestor directory below the filesystem root, so the layer can be applied on an empty base; one the base already has
+    # keeps the base's mode and owner (a layer must not turn /tmp into 0755)
+    inherited = {}
     for path in list(members):
         parent = Path(path).parent
         while str(parent) != "/":
-            members.setdefault(str(parent), (True, None, 0o755, None))
+            if str(parent) not in members:
+                members[str(parent)] = (True, None, 0o755, None)
+                existing = base.directory(str(parent)) if base else None
+                if existing:
+                    inherited[str(parent)] = existing
             parent = parent.parent
     with tarfile.open(plain, "w", format=tarfile.PAX_FORMAT) as archive:
         for path in sorted(members):
@@ -236,10 +243,13 @@ def write_layer(work, label, entries, rules):
             if mode is None:
                 mode = stat.S_IMODE(src.lstat().st_mode) if (extra is None and (src.exists() or src.is_symlink())) else 0o644
             explicit = mode
-            mode, uid, gid = rules.apply(path, mode, is_dir)
+            if path in inherited:
+                mode, uid, gid = inherited[path][:3]
+            else:
+                mode, uid, gid = rules.apply(path, mode, is_dir)
             if extra is not None:                          # a rendered template: its own mode, as `shaker init` sets it after `install`
                 mode = explicit
-            _entry(archive, path.lstrip("/"), src, mode, uid, gid, is_dir, extra)
+            _entry(archive, path.lstrip("/"), src, mode, uid, gid, is_dir, extra, mtime)
     diff_id = sha256_file(plain)
     blob = work / f"{label}.tar.gz"
     with open(plain, "rb") as src, open(blob, "wb") as raw:
@@ -266,6 +276,51 @@ def read_base(layout):
     return config, manifest["layers"]
 
 
+class BaseTree:
+    """What the base image already contains: directories keep their mode and owner, /etc/passwd and /etc/group are extended."""
+
+    def __init__(self, layout, descriptors):
+        self.layout, self.members, self.layers = Path(layout) if layout else None, {}, []
+        for layer in descriptors:
+            blob = self.layout / "blobs" / "sha256" / layer["digest"].split(":", 1)[1]
+            self.layers.append(blob)
+            with tarfile.open(blob, "r:*") as archive:
+                for member in archive.getmembers():
+                    name = "/" + member.name.lstrip("./").rstrip("/")
+                    self.members[name] = (member.mode, member.uid, member.gid, member.isdir())
+
+    def directory(self, path):
+        info = self.members.get(path)
+        return info if info and info[3] else None
+
+    def read(self, path):
+        """The newest content of a regular file of the base, or None."""
+        wanted = path.lstrip("/")
+        for blob in reversed(self.layers):
+            with tarfile.open(blob, "r:*") as archive:
+                for member in archive.getmembers():
+                    if member.name.lstrip("./") == wanted and member.isfile():
+                        return archive.extractfile(member).read().decode(errors="replace")
+        return None
+
+
+def account_entries(spec, base):
+    """/etc/passwd and /etc/group of the base with the service account added (nothing if it is already there)."""
+    if not spec["user"]:
+        return []
+    name, uid, gid, home = spec["user"]
+    entries = []
+    passwd = (base.read("/etc/passwd") if base else None) or ""
+    if not any(l.split(":")[0] == name or (len(l.split(":")) > 2 and l.split(":")[2] == str(uid)) for l in passwd.splitlines()):
+        passwd += ("" if passwd.endswith("\n") or not passwd else "\n") + f"{name}:x:{uid}:{gid}:{name} service:{home or '/'}:/sbin/nologin\n"
+        entries.append(("/etc/passwd", False, passwd.encode(), 0o644, None))
+    group = (base.read("/etc/group") if base else None) or ""
+    if gid != 0 and not any(len(l.split(":")) > 2 and l.split(":")[2] == str(gid) for l in group.splitlines()):
+        group += ("" if group.endswith("\n") or not group else "\n") + f"{name}:x:{gid}:\n"
+        entries.append(("/etc/group", False, group.encode(), 0o644, None))
+    return entries
+
+
 def build(units, out, *, tag, entrypoint="shaker", shaker_dir=None, base=None, log=print):
     """Write the OCI archive `out` for units (dependencies first, the service last). Returns a dict describing it."""
     main = units[-1]
@@ -280,6 +335,10 @@ def build(units, out, *, tag, entrypoint="shaker", shaker_dir=None, base=None, l
                   if entrypoint == "shaker" else spec["dirs"])
     gid = spec["user"][2] if spec["user"] else 0
 
+    base_config, base_layers = (read_base(base) if base else ({}, []))
+    base_tree = BaseTree(base, base_layers) if base else None
+    built_at = manifest.get("built_at")
+    mtime = calendar.timegm(time.strptime(built_at, "%Y-%m-%dT%H:%M:%SZ")) if built_at else 0
     work = Path(tempfile.mkdtemp(prefix="bh-image-"))
     try:
         layers = []                                     # (blob, digest, diff_id, size, created_by)
@@ -287,8 +346,9 @@ def build(units, out, *, tag, entrypoint="shaker", shaker_dir=None, base=None, l
             entries = [(p, d, None, None, None) for p, d in tree_paths(unit).items()]
             if unit is main:
                 entries += _service_entries(main, spec, parameters, env_pkg, entrypoint, root, gid)
+                entries += account_entries(spec, base_tree)
             label = f"{len(layers):02d}-{unit.name}"
-            layers.append(write_layer(work, label, entries, rules) + (f"distillery {unit.name} {unit.variant_data['full_version']}",))
+            layers.append(write_layer(work, label, entries, rules, mtime, base_tree) + (f"distillery {unit.name} {unit.variant_data['full_version']}",))
             log(f"[layer] {unit.name} {unit.variant_data['full_version']}: {layers[-1][3]} bytes")
         if entrypoint == "shaker":
             if not shaker_dir:
@@ -297,12 +357,11 @@ def build(units, out, *, tag, entrypoint="shaker", shaker_dir=None, base=None, l
             entries = [(str(shaker_target / p.relative_to(shaker_dir)), p.is_dir() and not p.is_symlink(), None, None, p)
                        for p in sorted(Path(shaker_dir).rglob("*")) if ".git" not in p.relative_to(shaker_dir).parts]
             var = [(str(root / "var" / sub).rstrip("/"), True, None, 0o775, None) for sub in ("", "lib", "lib/shaker", "log", "run")]
-            layers.append(write_layer(work, "90-shaker", entries + var, rules)
+            layers.append(write_layer(work, "90-shaker", entries + var, rules, mtime, base_tree)
                           + ("shaker",))
             log(f"[layer] shaker: {layers[-1][3]} bytes")
 
-        base_config, base_layers = (read_base(base) if base else ({}, []))
-        env = list(base_config.get("config", {}).get("Env", []))
+        env = list((base_config.get("config") or {}).get("Env") or [])
         env_map = {e.split("=", 1)[0]: e for e in env}
         if entrypoint == "shaker":
             env_map["BH_ROOT"] = f"BH_ROOT={root}"
@@ -335,20 +394,20 @@ def build(units, out, *, tag, entrypoint="shaker", shaker_dir=None, base=None, l
         }
         if (main.package.get("website") or main.context.get("website")):
             labels["org.opencontainers.image.url"] = main.context.get("website", "")
-        container = dict(base_config.get("config", {}))
+        container = dict(base_config.get("config") or {})
         container.update({"Entrypoint": ep, "Cmd": [], "Env": config_env, "WorkingDir": str(main.prefix),
-                          "Labels": {**container.get("Labels", {}), **{k: v for k, v in labels.items() if v}}})
+                          "Labels": {**(container.get("Labels") or {}), **{k: v for k, v in labels.items() if v}}})
         if spec["user"]:
             container["User"] = f"{spec['user'][1]}:{spec['user'][2]}"
         if spec["stopsignal"]:
             container["StopSignal"] = "SIG" + spec["stopsignal"]
-        history = list(base_config.get("history", [])) + [{"created": created, "created_by": layer[4]} for layer in layers]
+        history = list(base_config.get("history") or []) + [{"created": created, "created_by": layer[4]} for layer in layers]
         config = {
             "created": created,
             "architecture": ARCH.get(main.context["arch"], main.context["arch"]),
             "os": "linux",
             "config": container,
-            "rootfs": {"type": "layers", "diff_ids": list(base_config.get("rootfs", {}).get("diff_ids", []))
+            "rootfs": {"type": "layers", "diff_ids": list((base_config.get("rootfs") or {}).get("diff_ids") or [])
                        + ["sha256:" + layer[2] for layer in layers]},
             "history": history,
         }
@@ -364,7 +423,7 @@ def build(units, out, *, tag, entrypoint="shaker", shaker_dir=None, base=None, l
         index = {"schemaVersion": 2, "mediaType": MEDIA_INDEX,
                  "manifests": [{"mediaType": MEDIA_MANIFEST, "digest": "sha256:" + manifest_digest, "size": len(manifest_bytes),
                                 "annotations": {"org.opencontainers.image.ref.name": tag}}]}
-        _write_archive(Path(out), index, manifest_digest, manifest_bytes, config_digest, config_bytes, layers, base, base_layers)
+        _write_archive(Path(out), index, manifest_digest, manifest_bytes, config_digest, config_bytes, layers, base, base_layers, descriptors)
         return {"out": str(out), "tag": tag, "manifest": "sha256:" + manifest_digest, "layers": len(descriptors),
                 "entrypoint": ep, "user": container.get("User", ""), "size": Path(out).stat().st_size}
     finally:
@@ -388,7 +447,7 @@ def _service_entries(main, spec, parameters, env_pkg, entrypoint, root, gid):
     return entries
 
 
-def _write_archive(out, index, manifest_digest, manifest_bytes, config_digest, config_bytes, layers, base, base_layers):
+def _write_archive(out, index, manifest_digest, manifest_bytes, config_digest, config_bytes, layers, base, base_layers, manifest_layers):
     out.parent.mkdir(parents=True, exist_ok=True)
 
     def add_bytes(archive, name, data):
@@ -399,6 +458,11 @@ def _write_archive(out, index, manifest_digest, manifest_bytes, config_digest, c
     with tarfile.open(out, "w", format=tarfile.PAX_FORMAT) as archive:
         add_bytes(archive, "oci-layout", json.dumps(OCI_LAYOUT).encode())
         add_bytes(archive, "index.json", json.dumps(index, sort_keys=True, separators=(",", ":")).encode())
+        # docker-save compatibility: `docker load` with the classic image store reads this list, the OCI layout is ignored there
+        names = [f"blobs/sha256/{layer['digest'].split(':', 1)[1]}" for layer in manifest_layers]
+        tag = index["manifests"][0]["annotations"]["org.opencontainers.image.ref.name"]
+        add_bytes(archive, "manifest.json", json.dumps([{"Config": f"blobs/sha256/{config_digest}", "RepoTags": [tag], "Layers": names}],
+                                                      separators=(",", ":")).encode())
         blobs = {manifest_digest: manifest_bytes, config_digest: config_bytes}
         for name in sorted(blobs):
             add_bytes(archive, f"blobs/sha256/{name}", blobs[name])

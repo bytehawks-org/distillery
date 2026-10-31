@@ -40,6 +40,10 @@ def built(t, runtime=None, extra_assets=None, **extra):
     return sbom.closure(unit) + [unit]
 
 
+def built_prefix(t):
+    return str(t / "root" / "demo")
+
+
 def read_archive(path):
     """{name: bytes} of an OCI archive."""
     with tarfile.open(path) as archive:
@@ -239,6 +243,61 @@ class ImageTests(unittest.TestCase):
             config = json.loads(files["blobs/sha256/" + top["config"]["digest"].split(":")[1]])
             self.assertIn("LANG=C.UTF-8", config["config"]["Env"])
             self.assertEqual(len(config["rootfs"]["diff_ids"]), 4)
+
+    def make_base(self, t, members):
+        """An OCI layout with one layer holding members: {name: (mode, content or None for a directory)}."""
+        layout = t / "base"
+        blobs = layout / "blobs" / "sha256"
+        blobs.mkdir(parents=True)
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=raw, mode="w") as archive:
+            for name, (mode, content) in members.items():
+                info = tarfile.TarInfo(name)
+                info.mode = mode
+                if content is None:
+                    info.type = tarfile.DIRTYPE
+                    archive.addfile(info)
+                else:
+                    info.size = len(content)
+                    archive.addfile(info, io.BytesIO(content.encode()))
+        import gzip
+        blob = gzip.compress(raw.getvalue(), mtime=0)
+        diff = hashlib.sha256(raw.getvalue()).hexdigest()
+        digest = hashlib.sha256(blob).hexdigest()
+        (blobs / digest).write_bytes(blob)
+        config = json.dumps({"architecture": "amd64", "os": "linux", "config": {"Env": None}, "rootfs": {"type": "layers", "diff_ids": ["sha256:" + diff]}}).encode()
+        cdigest = hashlib.sha256(config).hexdigest()
+        (blobs / cdigest).write_bytes(config)
+        manifest = json.dumps({"schemaVersion": 2, "mediaType": image.MEDIA_MANIFEST,
+                               "config": {"mediaType": image.MEDIA_CONFIG, "digest": "sha256:" + cdigest, "size": len(config)},
+                               "layers": [{"mediaType": image.MEDIA_LAYER, "digest": "sha256:" + digest, "size": len(blob)}]}).encode()
+        mdigest = hashlib.sha256(manifest).hexdigest()
+        (blobs / mdigest).write_bytes(manifest)
+        (layout / "index.json").write_text(json.dumps({"schemaVersion": 2, "manifests": [{"digest": "sha256:" + mdigest, "size": len(manifest)}]}))
+        return layout
+
+    def test_service_account_is_added_to_the_base_without_clobbering_it(self):
+        with TempDir() as t:
+            units = built(t)
+            base = self.make_base(t, {"etc": (0o755, None), "etc/passwd": (0o644, "root:x:0:0:root:/root:/bin/sh\n"),
+                                      "tmp": (0o1777, None), "bin": (0o755, None)})
+            _, files = self.build(t, units, base=base)                         # a base whose config has "Env": null
+            top = json.loads(files["blobs/sha256/" + json.loads(files["index.json"])["manifests"][0]["digest"].split(":")[1]])
+            svc, _ = layer_members(files["blobs/sha256/" + top["layers"][-1]["digest"].split(":")[1]])
+            passwd = svc.text("etc/passwd")
+            self.assertTrue(passwd.startswith("root:x:0:0:root:/root:/bin/sh\n"))
+            self.assertIn("demo:x:1010:0:demo service:", passwd)
+            self.assertEqual(sum(1 for l in passwd.splitlines() if l.startswith("demo:")), 1)
+            self.assertNotIn("etc/group", svc)                                 # gid 0 exists everywhere
+            # the base's /tmp (the build root of this test lives there) keeps its sticky bit
+            self.assertEqual(svc["tmp"].mode, 0o1777)
+
+    def test_scratch_image_gets_its_own_passwd(self):
+        with TempDir() as t:
+            _, files = self.build(t, built(t))
+            top = json.loads(files["blobs/sha256/" + json.loads(files["index.json"])["manifests"][0]["digest"].split(":")[1]])
+            svc, _ = layer_members(files["blobs/sha256/" + top["layers"][-1]["digest"].split(":")[1]])
+            self.assertEqual(svc.text("etc/passwd"), "demo:x:1010:0:demo service:" + built_prefix(t) + ":/sbin/nologin\n")
 
     def test_unbuilt_or_modified_units_are_not_ready(self):
         with TempDir() as t:
