@@ -35,6 +35,8 @@ without external tools, which is why they are not YAML/JSON.
   "built_at": "2026-10-23T05:57:53Z"
 }
 ```
+`toolchain` (real builds): `{"cc": "cc (Ubuntu 13.3.0...) 13.3.0", "ld": ..., "make": ..., "libc": "glibc 2.39", "os": "ubuntu 24.04", "machine": "x86_64"}`,
+plus any tool the package declares and `builder_image` when `BH_BUILDER_IMAGE` is set. It is recorded, not hashed.
 `built_at` is present only for real builds (UTC; `SOURCE_DATE_EPOCH` if set). A bundle without it is
 "emitted, not built" and never counts as up to date. Shaker only needs the file to exist (it marks a
 valid bundle); everything it uses is in `manifest.env`.

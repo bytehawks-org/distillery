@@ -81,7 +81,7 @@ def write_file_list(unit, paths, destination):
     return lines
 
 
-def build_tarball(unit, rel_paths, out_dir, platform, built_epoch=None):
+def build_tarball(unit, rel_paths, out_dir, platform, built_epoch=None, toolchain=None):
     """Deterministic tar.gz of `rel_paths` (relative to unit.prefix), stored relative to the root."""
     from .store import entry_for
 
@@ -121,6 +121,8 @@ def build_tarball(unit, rel_paths, out_dir, platform, built_epoch=None):
         "depends": [{"package": d.name, "variant": d.variant, "recipe_sha256": d.recipe_sha256} for d in unit.depends],
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch)),
     }
+    if toolchain:
+        meta["toolchain"] = toolchain
     from .store import meta_bytes
 
     (out_dir / f"{entry.name}.json").write_bytes(meta_bytes(meta))

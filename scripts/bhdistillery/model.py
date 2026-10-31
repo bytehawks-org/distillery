@@ -316,8 +316,9 @@ def _depth(unit):
 def recipe_hash(unit):
     """Hash of everything that influences the produced artifact, including dependency hashes:
     a change in a library invalidates every application built on top of it."""
+    # `jobs` is how many cores this machine has, not part of what is built: the hash must be the same on a 4-core and a 64-core runner
     recipe = resolve_dict_templates(
-        {k: v for k, v in unit.package.items() if k not in ("variant",)}, unit.context)
+        {k: v for k, v in unit.package.items() if k not in ("variant", "toolchain")}, {**unit.context, "jobs": "JOBS"})
     payload = {
         "schema": BUNDLE_SCHEMA,
         "recipe": recipe,

@@ -40,6 +40,8 @@ def make_parser():
         p.add_argument("--arch", help="architecture label (default: detected, amd64/arm64)")
         p.add_argument("--libc", choices=["glibc", "musl"], help="C library the units are built for (default: detected, or BH_LIBC)")
         p.add_argument("--linkage", choices=["dynamic", "static"], help="static = link the binaries of packages that define a `static:` recipe without a dynamic loader (default: dynamic, or BH_LINKAGE)")
+        p.add_argument("--sandbox", choices=["auto", "none", "bwrap", "unshare"], help="run build stages with a read-only system, private /tmp and no network (default: config build.sandbox, else none)")
+        p.add_argument("--reproducible", action="store_true", help="fix SOURCE_DATE_EPOCH (from the source), TZ and locale for the build, and stamp bundle/artifact with that time")
         if package:
             p.add_argument("--package", required=required)
             p.add_argument("--variant", help="default: stable, or the first declared variant")
@@ -66,6 +68,13 @@ def make_parser():
     p_build.add_argument("--stages", default=",".join(DEFAULT_STAGES),
                          help=f"comma list among {','.join(STAGES)} (add 'check' to run the test suite)")
     p_build.add_argument("--artifacts-dir", help="also package every built unit here (<name>.tar.gz + .json) for a store")
+
+    p_repro = sub.add_parser("repro", help="build a unit twice and compare every installed file (exit 3 if they differ)")
+    common(p_repro)
+    p_repro.add_argument("--with-deps", action="store_true", help="build the dependencies first (once)")
+    p_repro.add_argument("--allow-unverified", action="store_true", help="accept sources without pinned sha256 (not for releases)")
+    p_repro.add_argument("--jobs", type=int, help="parallel jobs (default: CPU count)")
+    p_repro.add_argument("--stages", default=",".join(DEFAULT_STAGES), help=f"comma list among {','.join(STAGES)}")
 
     p_bundle = sub.add_parser("bundle", help="write the Shaker bundle without building")
     common(p_bundle)
@@ -166,6 +175,11 @@ def load_catalog(args):
     config = load_yaml(args.config)
     if args.root:
         config = apply_root(config, args.root)
+    build = config["config"].setdefault("build", {})
+    if getattr(args, "sandbox", None):
+        build["sandbox"] = args.sandbox
+    if getattr(args, "reproducible", False):
+        build["reproducible"] = True
     return Catalog(config, load_yaml(args.packages), getattr(args, "jobs", None), getattr(args, "arch", None), getattr(args, "assets", None),
                    getattr(args, "libc", None), getattr(args, "linkage", None))
 
@@ -173,7 +187,7 @@ def load_catalog(args):
 COMMANDS = {
     "list": commands.cmd_list, "plan": commands.cmd_plan, "build": commands.cmd_build,
     "bundle": commands.cmd_bundle, "checksum": commands.cmd_checksum, "outdated": commands.cmd_outdated,
-    "bump": commands.cmd_bump, "sign": commands.cmd_sign, "scaffold": commands.cmd_scaffold, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
+    "bump": commands.cmd_bump, "repro": commands.cmd_repro, "sign": commands.cmd_sign, "scaffold": commands.cmd_scaffold, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
     "affected": commands.cmd_affected, "chain": commands.cmd_chain, "restore": commands.cmd_restore,
     "publish": commands.cmd_publish, "verify": commands.cmd_verify,
 }

@@ -14,6 +14,8 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
 | Stale or half-built artifact looks installed | bundle (with `built_at`) is written last; recipe hash compared on every build |
 | Silent drift between what was reviewed and what was built | recipe hash covers commands, variant, prefix and dependencies; recorded in `manifest.json` and in Shaker's state |
 | Injection through the bundle formats | `|` and newlines are rejected in every emitted field; `run` must be an argv list, not a shell string |
+| A build changes the system or phones home | `--sandbox`: read-only system, no network, writable only where the unit installs |
+| A binary that differs from what was reviewed, undetected | `repro` builds twice with fixed time/locale and compares every file; `manifest.json` records the toolchain |
 | Hard-wired `/opt/bh` | never used in artifacts, so symlink games cannot redirect an installed tree |
 
 ## Automation (0.4)
@@ -32,8 +34,11 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
 * **Build commands are trusted shell** (as in any build system). The catalog is code: review changes
   to `packages.yaml` like code, protect the branch, and require the checksum change in the same review
   as the URL/version change.
-* Builds run with the invoking user's privileges and network. Use an unprivileged user and `--root`;
-  for hostile sources use a throw-away container/VM (sandboxing is on the roadmap).
+* By default builds run with the invoking user's privileges and network. `--sandbox auto|bwrap|unshare` (or `build.sandbox`) runs the
+  stages with a read-only system, a private `/tmp`, separate PID/IPC/UTS namespaces and **no network**, writable only in the source tree,
+  the prefix and the log directory: a compromised build script cannot reach out or modify the system. It is a mitigation, not a
+  VM: the kernel is shared, and a package that needs the network says so (`build: {network: true}`). The download itself happens before,
+  outside the sandbox, and is verified first. For hostile sources still prefer a throw-away container/VM.
 * `file://` URLs are accepted (tests, air-gapped mirrors) - they are pinned by checksum like any other.
 * The SHA-256 proves "same bytes as when the maintainer pinned them", not "upstream is honest":
   declare `signature:` (OpenPGP, pinned signer fingerprints) so `build` and `bump` check it. `checksum` only prints the value; packages without `signature:` (openssl, nginx, zlib, pcre2) are still integrity-only.
@@ -56,7 +61,7 @@ paths are excluded by design, so keep that list short and reviewed. Trust is nev
 
 Source signatures other than OpenPGP (minisign/cosign) and for the older packages · SBOM export (CycloneDX/SPDX) · vulnerability
 scanning of the produced tree · reproducible-build verification (two builds, bit-identical) ·
-build sandboxing (network-less, read-only source) · signing the bundle. All on the [ROADMAP](../ROADMAP.md).
+signing the bundle. All on the [ROADMAP](../ROADMAP.md).
 
 ## Operational advice
 
