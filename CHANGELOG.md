@@ -6,6 +6,12 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 ## [Unreleased]
 
 ### Added
+- **Sandboxed builds.** `--sandbox auto|bwrap|unshare` / `build.sandbox`: stages run with a read-only system, private `/tmp`, own PID/IPC/UTS
+  namespaces and no network, writable only in the source tree, the prefix and the log directory; `build: {network: true}` per package.
+- **Reproducibility.** `--reproducible` / `build.reproducible` fixes `SOURCE_DATE_EPOCH`, `TZ` and the locale; new `repro` command builds a unit
+  twice and compares every installed file (exit 3 on a difference).
+- **Toolchain record.** `manifest.json` and the artifact sidecar carry `toolchain` (cc, ld, ar, make, libc, OS, machine, `builder_image`, plus the
+  package's `toolchain:` list); recorded, not part of the recipe hash.
 - **User manual** (`docs/MANUAL.md`) with outputs of real runs; docs review (stale counts and examples).
 - **Static linking.** `--linkage static` / `BH_LINKAGE`: packages with a `static:` recipe (commands/env overrides, `binaries`) are built
   without a dynamic loader; platform `amd64-static` / `amd64-musl-static`, `linkage` in the recipe hash (dynamic hashes unchanged), manifest,

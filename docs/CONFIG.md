@@ -28,6 +28,24 @@ config:
 | `libraries.default_prefix` | prefix of `tag: library` units; also `deps_prefix` for dependents |
 | `applications.default_prefix` | prefix template of `tag: application` units (`{{ name }}` allowed) |
 
+## `build`
+
+```yaml
+config:
+  build:
+    sandbox: none          # none | auto | bwrap | unshare      (--sandbox overrides)
+    reproducible: false    # true = fixed SOURCE_DATE_EPOCH / TZ / locale for every build  (--reproducible)
+```
+
+* `sandbox` runs the stages (not the download, which Distillery does before and verifies) with a read-only system, a private
+  `/tmp`, a new PID/IPC/UTS namespace and **no network**; only the source tree, the prefix and the log directory are writable.
+  `auto` picks `bwrap` (unprivileged, if installed), else `unshare` (root or user namespaces), else `none` and says so. An explicit
+  backend that does not work here is an error, never a silent downgrade. A package that must reach the network while building
+  (language module downloads) declares `build: {network: true}`. If the root lives under `/tmp`, `/tmp` stays shared so those paths
+  remain reachable.
+* `reproducible` exports `SOURCE_DATE_EPOCH` (the newest mtime of the extracted source, or the value already set), `TZ=UTC`,
+  `LC_ALL=C`, and stamps `built_at` and the artifact `created_at` with that time. See `autobuilder.py repro`.
+
 ## `artifacts`
 
 ```yaml

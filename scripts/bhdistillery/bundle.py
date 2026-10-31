@@ -142,7 +142,7 @@ def spec_lines(unit):
     return lines
 
 
-def manifest(unit, built=False):
+def manifest(unit, built=False, toolchain=None, built_epoch=None):
     data = {
         "schema": BUNDLE_SCHEMA,
         "generator": f"distillery/{__version__}",
@@ -163,8 +163,10 @@ def manifest(unit, built=False):
                      "recipe_sha256": d.recipe_sha256} for d in unit.depends],
     }
     if built:
-        epoch = int(os.environ.get("SOURCE_DATE_EPOCH", time.time()))
+        epoch = int(built_epoch if built_epoch is not None else os.environ.get("SOURCE_DATE_EPOCH", time.time()))
         data["built_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+        if toolchain:
+            data["toolchain"] = toolchain
     return data
 
 
@@ -180,14 +182,14 @@ def manifest_env(data):
         ("BH_PKG_DEPENDS", " ".join(f"{d['package']}={d['recipe_sha256']}" for d in data.get("depends", [])))) if value != "")
 
 
-def emit(unit, assets_root, out_dir=None, built=False):
+def emit(unit, assets_root, out_dir=None, built=False, toolchain=None, built_epoch=None):
     """Write the bundle of a unit and return its directory."""
     out = Path(out_dir) if out_dir else unit.bundle_dir
     out.mkdir(parents=True, exist_ok=True)
 
     (out / "rosetta.map").write_text("\n".join(rosetta_lines(unit)) + "\n")
     (out / "runtime.spec").write_text("\n".join(spec_lines(unit)) + "\n")
-    data = manifest(unit, built)
+    data = manifest(unit, built, toolchain, built_epoch)
     (out / "manifest.json").write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
     (out / "manifest.env").write_text(manifest_env(data))
 

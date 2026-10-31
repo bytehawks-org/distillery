@@ -42,7 +42,7 @@ matching change in the bundle schema / Shaker.
 | 🚧 Source signature verification | ✅ OpenPGP (`signature:` block, pinned signer fingerprints, checked in `build` before extraction and in `bump` before pinning; nifi, temurin); ⬜ minisign/cosign, ⬜ enforcement for the older packages (openssl, nginx, zlib, pcre2) |
 | 🚧 Installed-file inventory | ✅ `files.sha256`, `autobuilder.py verify`, Shaker `verify --files`, `mutable` paths; ⬜ mode/owner |
 | ⬜ Vulnerability gate | optional `grype`/`trivy` run on SBOM in CI; fail on severity threshold |
-| ⬜ Reproducible-build check | `build --repro`: build twice in clean dirs with `SOURCE_DATE_EPOCH`, compare file hashes |
+| ✅ Reproducible-build check | `autobuilder.py repro`: two builds with fixed `SOURCE_DATE_EPOCH`/TZ/locale, every installed file compared (zlib verified; see docs) |
 | ✅ Update watcher | `outdated` + `bump` + `watch-upstream.yml` |
 | ⬜ Variant lifecycle | `eol:` dates per variant, warning in `plan`/`list` |
 
@@ -66,14 +66,14 @@ matching change in the bundle schema / Shaker.
 | Item | Detail |
 |---|---|
 | 🚧 Multi-arch / musl | ✅ platform = arch × libc in hashes, names, manifests, pins, packaging; OpenSSL target per arch; Temurin pinned for 4 platforms; Debian + Alpine CI legs; ⬜ **real compilation on musl** (openssl, zlib, pcre2, nginx on Alpine), ⬜ NiFi on musl (native libraries of some NARs), ⬜ arm64 runners, ⬜ cross-compilation |
-| ⬜ Sandboxed builds | run stages in `bwrap`/`unshare`/container: network-less after fetch, read-only source |
+| ✅ Sandboxed builds | `--sandbox auto\|bwrap\|unshare`: read-only system, private `/tmp`, no network after the fetch (unshare verified; bwrap implemented, not run here) |
 | ⬜ Parallel independent units | schedule the DAG with `--max-units`, per-unit logs |
 | ✅ Remote artifact cache | content-addressed by recipe hash (`--store`, `chain`) with dir/GitHub/Nexus backends; more backends below |
 | ⬜ Patches | `patches:` list (checksummed) applied in `pre` with `patch -p1`, part of the recipe hash |
 | 🚧 git sources | ✅ commit-pinned (`ref_template` + `commit`), `bump`, `checksum`; ⬜ submodules, ⬜ signed-tag verification |
 | ⬜ Non-tarball sources | zip, zst, xz explicit; local directories for development |
 | ⬜ `check` policy | run the test-suite for release builds by default |
-| ⬜ Toolchain pinning | record compiler/libc versions in the manifest; optional builder image |
+| 🚧 Toolchain pinning | ✅ compiler, linker, make, libc, OS recorded in manifest and sidecar (`builder_image` from `BH_BUILDER_IMAGE`); ⬜ enforcing a toolchain / pinned builder image |
 
 ## 0.6 - delivery
 
@@ -108,7 +108,7 @@ matching change in the bundle schema / Shaker.
 ## Known gaps today (honest list)
 
 * OpenSSL targets are mapped for amd64 and arm64 but only amd64 was built here; no cross-compilation.
-* Build commands are unsandboxed trusted shell.
+* Build commands are trusted shell; `--sandbox` confines them (read-only system, no network) but is off by default.
 * No signature/SBOM; `checksum`/`bump` trust the download they just made (cross-checked with upstream's checksum when published).
 * The workflows pass `actionlint` and their commands are tested, but have not run on GitHub yet; Nexus has only been tested against a fake server.
 * GitHub artifacts expire (≤ 90 days): GitHub is a cache, Nexus (or another store) is needed for an archive.

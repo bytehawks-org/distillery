@@ -21,6 +21,9 @@ Output: progress and build output on stdout, errors on stderr.
 | `--linkage dynamic\|static` | `dynamic` (`BH_LINKAGE` overrides) | `static` builds the packages that define a `static:` recipe without a dynamic loader (platform `amd64-static`, `amd64-musl-static`), see [STATIC](STATIC.md) |
 | `--libc glibc\|musl` | detected (`BH_LIBC` overrides): musl when `/lib/ld-musl-*` exists | C library the units are built for; part of the recipe hash, of the artifact name (`amd64-musl`) and of the manifest |
 
+| `--sandbox auto\|none\|bwrap\|unshare` | `config.build.sandbox`, else `none` | run build stages read-only, with a private `/tmp` and no network ([CONFIG](CONFIG.md#build)) |
+| `--reproducible` | `config.build.reproducible` | fixed `SOURCE_DATE_EPOCH`, `TZ`, locale; `built_at` and artifact time follow it |
+
 ## `list`
 ```
 $ autobuilder.py list
@@ -47,6 +50,17 @@ $ autobuilder.py plan --package nginx
 4. nginx 1.28.0 [stable/application] sha256 ok, to build, recipe f21cc55f620f
 ```
 `sha256 MISSING` means the build would be refused.
+
+## `repro`
+`repro --package P [--with-deps] [--stages ...] [--sandbox ...]`: builds the unit **twice** from the same source in the same place,
+with the reproducible environment, deleting what the first build installed in between, and compares every installed file (the
+bundle is left out: it carries build metadata). Dependencies are built once, normally. Exit `0` and
+`reproducible: zlib 1.3.1, 11 paths identical in two builds`, or exit `3` listing `different` / `missing` / `extra` paths.
+
+```
+$ autobuilder.py repro --package zlib --root /tmp/stage --sandbox auto
+reproducible: zlib 1.3.1, 11 paths identical in two builds
+```
 
 ## `build`
 

@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from . import bump as bumper
-from . import bundle, fetch, store as stores_mod
+from . import bundle, fetch, repro, store as stores_mod
 from .build import DEFAULT_STAGES, STAGES, ensure_unit, restore_unit
 from .model import Catalog, ModelError, publish_tag
 from .store import MultiStore, StoreError, Unsupported, entry_for, open_store
@@ -91,6 +91,26 @@ def cmd_build(catalog, args):
     for item in plan:
         ensure_unit(item, args.assets, stores, force=args.force, dry_run=args.dry_run,
                     allow_unverified=args.allow_unverified, stages=stages, artifacts_dir=args.artifacts_dir)
+
+
+def cmd_repro(catalog, args):
+    """Build the unit twice, compare every installed file. Exit 3 when they differ."""
+    unit = catalog.unit(args.package, args.variant, args.tag)
+    plan = catalog.plan(unit, with_deps=args.with_deps)
+    stages = tuple(s for s in args.stages.split(",") if s)
+    for item in plan[:-1]:                                   # dependencies: built once, as usual
+        ensure_unit(item, args.assets, None, allow_unverified=args.allow_unverified, stages=stages)
+    identical, differences, count = repro.check(plan[-1], args.assets, stages=stages, allow_unverified=args.allow_unverified,
+                                                log=eprint, sandbox=args.sandbox)
+    if identical:
+        print(f"reproducible: {unit.name} {unit.variant_data['full_version']}, {count} paths identical in two builds")
+        return 0
+    for kind in ("different", "missing", "extra"):
+        for path in differences[kind]:
+            print(f"{kind:<9} {path}")
+    print(f"NOT reproducible: {unit.name} {unit.variant_data['full_version']} "
+          f"({sum(len(v) for v in differences.values())} of {count} paths differ)")
+    return 3
 
 
 def cmd_bundle(catalog, args):

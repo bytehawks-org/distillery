@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import bundle, elfcheck, fetch, package as artifact, signature
+from . import bundle, elfcheck, fetch, package as artifact, sandbox as sandbox_mod, signature, toolchain
 from .templates import resolve_template
 
 STAGES = ("pre", "configure", "make", "check", "install", "post")
@@ -46,11 +46,24 @@ def build_env(unit, dependencies_prefix):
     return env
 
 
-def run_script(script, cwd, env, log_file, echo=print):
-    """Run the script, stream its output to the console and to a log file."""
+def source_epoch(src_dir):
+    """The newest mtime in an extracted source tree: a stable SOURCE_DATE_EPOCH for the same source."""
+    newest = 0
+    for directory, dirs, files in os.walk(src_dir):
+        for name in dirs + files:
+            try:
+                newest = max(newest, int(os.lstat(os.path.join(directory, name)).st_mtime))
+            except OSError:
+                pass
+    return newest or 1
+
+
+def run_script(script, cwd, env, log_file, echo=print, wrapper=None):
+    """Run the script, stream its output to the console and to a log file. `wrapper(argv) -> argv` puts the
+    `bash -c` command in a sandbox."""
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "w") as log, subprocess.Popen(
-            ["bash", "-c", script], cwd=cwd, env=env,
+            (wrapper or list)(["bash", "-c", script]), cwd=cwd, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
         for line in proc.stdout:
             log.write(line)
@@ -61,7 +74,7 @@ def run_script(script, cwd, env, log_file, echo=print):
 
 
 def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverified=False,
-               stages=DEFAULT_STAGES, artifacts_dir=None, log=print):
+               stages=DEFAULT_STAGES, artifacts_dir=None, log=print, sandbox=None, reproducible=False):
     """Build one unit. Returns 'built', 'skipped' or 'dry-run'.
 
     The files the build changes are recorded in the bundle (`files.sha256`); with artifacts_dir the unit
@@ -118,7 +131,20 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     before = artifact.snapshot(unit.prefix)
     log_file = Path(cfg["log_path"]) / f"{unit.name}-{unit.variant_data['full_version']}.log"
     started = time.time()
-    run_script(script, unit.src_dir, build_env(unit, unit.context["deps_prefix"]), log_file, echo=log)
+    env = build_env(unit, unit.context["deps_prefix"])
+    reproducible = reproducible or bool(cfg.get("build", {}).get("reproducible"))
+    epoch = None
+    if reproducible:                       # same source, same environment: the inputs that leak into binaries are fixed
+        epoch = int(os.environ.get("SOURCE_DATE_EPOCH") or source_epoch(unit.src_dir))
+        env.update({"SOURCE_DATE_EPOCH": str(epoch), "TZ": "UTC", "LC_ALL": "C", "LANG": "C"})
+    backend = sandbox_mod.resolve(sandbox or cfg.get("build", {}).get("sandbox"))
+    wanted_net = bool(unit.package.get("build", {}).get("network"))
+    writable = [unit.prefix, unit.src_dir, str(log_file.parent)]
+    if backend != "none":
+        log(f"[sandbox] {backend}: system read-only, writable {', '.join(writable)}, network {'on' if wanted_net else 'off'}")
+    tools = toolchain.collect(unit, env)
+    run_script(script, unit.src_dir, env, log_file, echo=log,
+               wrapper=lambda argv: sandbox_mod.wrap(backend, argv, unit.src_dir, writable, network=wanted_net))
 
     if unit.context["linkage"] == "static":
         problems = elfcheck.check_static(unit.prefix, unit.package.get("static", {}).get("binaries", []))
@@ -126,7 +152,7 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
             raise BuildError(f"{unit.name}: built as static but " + "; ".join(problems))
         log(f"[static] {', '.join(unit.package['static']['binaries']) or 'no binaries declared'}: no dynamic loader, no needed libraries")
 
-    out = bundle.emit(unit, assets_root, built=True)
+    out = bundle.emit(unit, assets_root, built=True, toolchain=tools, built_epoch=epoch)
     changed = artifact.changed_paths(before, artifact.snapshot(unit.prefix))
     files_list = out / "files.sha256"
     artifact.write_file_list(unit, changed, files_list)       # describes everything except itself
@@ -136,7 +162,8 @@ def build_unit(unit, assets_root, *, dry_run=False, force=False, allow_unverifie
     log(f"[done] {title} in {time.time() - started:.0f}s, bundle: {out}, {len(changed)} paths recorded")
 
     if artifacts_dir:
-        entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["platform"])
+        entry, tarball, meta = artifact.build_tarball(unit, changed, artifacts_dir, unit.context["platform"],
+                                                      built_epoch=epoch, toolchain=tools)
         log(f"[pack] {tarball} ({meta['size']} bytes, sha256 {meta['sha256'][:12]})")
         signature.sign_artifact(tarball.with_suffix("").with_suffix(".json"), cfg, log)
     return "built"

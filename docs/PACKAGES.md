@@ -111,6 +111,15 @@ that is the same on both libcs needs only the `<arch>` entries. `libc_map: {glib
 A platform without a pin is "not pinned": the build refuses. `checksum --arch arm64` prints the value to pin;
 `bump` recomputes every architecture of a map. `arch` is part of the recipe hash, so artifacts stay per architecture.
 
+## `build` and `toolchain`
+
+```yaml
+build:     {network: true}          # the stages may reach the network under --sandbox (default: no network)
+toolchain: [perl, c++]              # tools to record besides the defaults (cc, ld, ar, make): their first --version line
+```
+Both are metadata about *how* to build, not *what* is built: `toolchain` is left out of the recipe hash, and every unit records what
+it was built with (`manifest.json` and the artifact sidecar: `toolchain`, plus libc, OS, machine and `BH_BUILDER_IMAGE` when set).
+
 ## `static` - a recipe without a dynamic loader
 
 ```yaml

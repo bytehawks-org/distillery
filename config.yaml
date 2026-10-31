@@ -31,6 +31,12 @@ config:
         repository: bytehawks
         prefix: bytehawks
 
+  # How stages are run. `sandbox`: none | auto | bwrap | unshare - read-only system, private /tmp, no network, writable only the
+  # source, the prefix and the log directory (docs/SECURITY.md). `reproducible`: fix SOURCE_DATE_EPOCH, TZ and the locale.
+  build:
+    sandbox: none
+    reproducible: false
+
   # Native packages (`autobuilder.py package`, needs nfpm): see docs/PACKAGING.md.
   packaging:
     formats: [deb, rpm, apk]
