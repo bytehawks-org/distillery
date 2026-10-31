@@ -42,7 +42,7 @@ matching change in the bundle schema / Shaker.
 | 🚧 Source signature verification | ✅ OpenPGP (`signature:` block, pinned signer fingerprints, checked in `build` before extraction and in `bump` before pinning; nifi, temurin); ⬜ minisign/cosign, ⬜ enforcement for the older packages (openssl, nginx, zlib, pcre2) |
 | 🚧 Installed-file inventory | ✅ `files.sha256`, `autobuilder.py verify`, Shaker `verify --files`, `mutable` paths; ⬜ mode/owner |
 | ⬜ Vulnerability gate | optional `grype`/`trivy` run on SBOM in CI; fail on severity threshold |
-| ✅ Reproducible-build check | `autobuilder.py repro`: two builds with fixed `SOURCE_DATE_EPOCH`/TZ/locale, every installed file compared (zlib verified; see docs) |
+| ✅ Reproducible-build check | `autobuilder.py repro`: two builds with fixed `SOURCE_DATE_EPOCH`/TZ/locale, every installed file compared (zlib, and nginx with openssl and pcre2, verified identical in two sandboxed builds) |
 | ✅ Update watcher | `outdated` + `bump` + `watch-upstream.yml` |
 | ⬜ Variant lifecycle | `eol:` dates per variant, warning in `plan`/`list` |
 
