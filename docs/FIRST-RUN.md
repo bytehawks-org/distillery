@@ -17,6 +17,16 @@ Legend: ☐ to do · every step is non-destructive (artifacts expire, pull reque
 | ☐ | Billing → storage | a NiFi artifact is ~0.8 GB; GitHub artifacts count against the quota. Plan Nexus (step 8) before building NiFi on a small plan |
 | ☐ | your workstation | `git push` of the branch; do **not** merge yet: all steps below run from the branch |
 
+### 0b. Builder images (optional, recommended; saves the toolchain installation of every job)
+
+1. Actions → `builder-images` → *Run workflow* (push ✔). It builds `bytehawks-builder` and `bytehawks-runtime`, `glibc` and `musl`, and pushes them to `ghcr.io/<owner>/`.
+   The amd64 build of all four already passed in the pull request run; what is new here is the arm64 build (QEMU) and the push to ghcr.io, so a failure is most likely in one of those.
+2. Make the packages readable by the repository (package settings → Manage Actions access) or public.
+3. Set the repository variables `BH_BUILDER_IMAGE=ghcr.io/<owner>/bytehawks-builder:glibc` and `BH_BUILDER_IMAGE_MUSL=ghcr.io/<owner>/bytehawks-builder:musl`.
+   The next `build` logs `toolchain already present`, and every manifest records the image in `toolchain.builder_image`. Details: [BUILDER-IMAGES](BUILDER-IMAGES.md).
+
+Artifact names are `<package>_bh_<variant>_<tag>_<platform>_<version>_<recipe12>` (`bh` = `artifacts.holder`; the repository variable `BH_HOLDER` overrides it).
+
 Evidence to keep for every step: the run URL, the first failing log line, and the fix commit.
 
 ## 1. `ci.yml` (push the branch)
@@ -37,7 +47,7 @@ Stop here until `ci` is green. Everything after assumes it.
 ☐ Actions → build → *Run workflow* on the branch: `packages = zlib`, `force = true`, `reason = first run`.
 
 Predicted: one `build` run with two reusable-workflow legs, `platform (glibc)` and `platform (musl)`, each `plan → libs`
-(no apps). Artifacts `bh--zlib--all--library--amd64--1.3.1--…` and `bh--zlib--all--library--amd64-musl--1.3.1--…`.
+(no apps). Artifacts `zlib_bh_all_library_amd64_1.3.1_…` and `zlib_bh_all_library_amd64-musl_1.3.1_…`.
 
 | ☐ | Check | Predicted | If not |
 |---|---|---|---|

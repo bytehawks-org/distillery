@@ -2,7 +2,7 @@ name: build-platform
 
 # The build pipeline for ONE platform (C library): plan -> libs -> apps -> publish. Called by build.yml once per libc
 # (glibc on Debian, musl on Alpine); see that file for the triggers. Artifact names carry the platform
-# (bh--<package>--...--amd64--... for glibc, ...--amd64-musl--... for musl), so both live in the same stores.
+# (<package>_bh_<variant>_<tag>_amd64_... for glibc, ..._amd64-musl_... for musl; `bh` = artifacts.holder), so both live in the same stores.
 #
 #   plan  ->  libs (serial, topological)  ->  apps (parallel)  ->  publish to Nexus (optional)
 #
@@ -24,6 +24,8 @@ permissions:
 
 env:
   BH_LIBC: ${{ inputs.libc }}                 # makes every command plan and build for this libc
+  BH_BUILDER_IMAGE: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}      # recorded in every manifest (toolchain.builder_image)
+  BH_HOLDER: ${{ vars.BH_HOLDER }}            # optional: overrides artifacts.holder in config.yaml
   # github = this repository's Actions artifacts. Add a Nexus by defining the repository variable NEXUS_URL
   # (and secrets NEXUS_USER / NEXUS_PASSWORD): it becomes a second, long-term store.
   STORES: ${{ vars.NEXUS_URL && '--store github --store nexus' || '--store github' }}
@@ -40,6 +42,7 @@ jobs:
       has_libs: ${{ steps.stale.outputs.has_libs }}
       has_apps: ${{ steps.stale.outputs.has_apps }}
       count: ${{ steps.stale.outputs.count }}
+      pattern: ${{ steps.stale.outputs.pattern }}      # matches this holder's artifact names
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -85,18 +88,22 @@ jobs:
     steps:
       - name: Toolchain (glibc)
         if: inputs.libc == 'glibc'
+        # nothing to install in a builder image (docker/builder-glibc.Dockerfile)
         run: |
+          if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v git >/dev/null; then echo "toolchain already present"; exit 0; fi
           apt-get update
           apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
       - name: Toolchain (musl)
         if: inputs.libc == 'musl'
         shell: sh
+        # nothing to install in a builder image (docker/builder-musl.Dockerfile)
         run: |
+          if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v bash >/dev/null; then echo "toolchain already present"; exit 0; fi
           apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
       - uses: actions/checkout@v4
       - name: Python environment
         run: |
-          python3 -m venv /opt/venv
+          [ -x /opt/venv/bin/python ] || python3 -m venv /opt/venv           # a builder image has it, with the requirements installed
           /opt/venv/bin/pip install -r scripts/requirements.txt
       - name: Signing key
         # optional: without the secret the artifacts are simply not signed (forks, pull requests)
@@ -154,18 +161,22 @@ jobs:
     steps:
       - name: Toolchain (glibc)
         if: inputs.libc == 'glibc'
+        # nothing to install in a builder image (docker/builder-glibc.Dockerfile)
         run: |
+          if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v git >/dev/null; then echo "toolchain already present"; exit 0; fi
           apt-get update
           apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
       - name: Toolchain (musl)
         if: inputs.libc == 'musl'
         shell: sh
+        # nothing to install in a builder image (docker/builder-musl.Dockerfile)
         run: |
+          if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v bash >/dev/null; then echo "toolchain already present"; exit 0; fi
           apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
       - uses: actions/checkout@v4
       - name: Python environment
         run: |
-          python3 -m venv /opt/venv
+          [ -x /opt/venv/bin/python ] || python3 -m venv /opt/venv           # a builder image has it, with the requirements installed
           /opt/venv/bin/pip install -r scripts/requirements.txt
       - name: Signing key
         # optional: without the secret the artifacts are simply not signed (forks, pull requests)
@@ -212,7 +223,7 @@ jobs:
         run: tail -n 200 /opt/bytehawks/var/log/distillery/*.log || true
 
   publish-nexus:
-    needs: [libs, apps]
+    needs: [plan, libs, apps]
     if: ${{ !cancelled() && !failure() && vars.NEXUS_URL != '' && (needs.libs.result == 'success' || needs.apps.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
@@ -223,7 +234,7 @@ jobs:
       - run: pip install -r scripts/requirements.txt
       - uses: actions/download-artifact@v4
         with:
-          pattern: bh--*
+          pattern: ${{ needs.plan.outputs.pattern }}
           path: dist
           merge-multiple: true
       - name: Publish to Nexus

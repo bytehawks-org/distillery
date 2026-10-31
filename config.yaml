@@ -13,6 +13,8 @@ config:
     default_prefix: /opt/bytehawks/{{ name }}
   # Where built units are kept (see docs/ARTIFACTS.md). `--store` accepts these names, dir:PATH, github[:owner/repo].
   artifacts:
+    holder: bh            # who owns the artifacts; a field of every name: nginx_bh_stable_application_amd64_1.28.0_a1146e116dea
+    # name_order: [package, holder, variant, tag, platform, version, recipe12]      # the layout of the seven fields (a permutation)
     default_stores: [github]
     # Detached OpenPGP signature of every artifact sidecar (<name>.json.asc; the sidecar holds the tarball sha256 and the recipe).
     # Sign: set `key` (or BH_SIGNING_KEY) - a key of your gpg keyring locally, an imported secret in CI.

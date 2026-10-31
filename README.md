@@ -120,6 +120,7 @@ Reference: [docs/CLI.md](docs/CLI.md).
 | [AUTOMATION](docs/AUTOMATION.md) | the scheduled workflows: watch upstream, rebuild what is affected, setup, operation |
 | [FIRST-RUN](docs/FIRST-RUN.md) | checklist for the first run of the workflows on GitHub: order, predicted results, what to do otherwise |
 | [INTEGRATION](docs/INTEGRATION.md) | Distillery + Shaker, or each alone: what Distillery emits, what Shaker checks, chain of trust, setups |
+| [BUILDER-IMAGES](docs/BUILDER-IMAGES.md) | Dockerfiles for ready-made builder and runtime images; the workflow that publishes them |
 | [SBOM](docs/SBOM.md) / [IMAGE](docs/IMAGE.md) | CycloneDX SBOM in every bundle; OCI images from built services (`FROM scratch` for static ones) |
 | [STATIC](docs/STATIC.md) | `--linkage static`: recipes, limits (NSS, `dlopen`, valkey without Lua), checks |
 | [SCAFFOLD](docs/SCAFFOLD.md) | parameters and templates derived from the configuration file an application ships |

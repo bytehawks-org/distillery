@@ -59,7 +59,7 @@ class LinkageModelTests(unittest.TestCase):
             self.assertNotEqual(dyn.recipe_sha256, stat.recipe_sha256)
             self.assertEqual(stat.context["linkage"], "static")
             self.assertTrue(stat.context["platform"].endswith("-static"))
-            self.assertEqual(entry_for(stat, stat.context["platform"]).name.split("--")[4], stat.context["platform"])
+            self.assertEqual(entry_for(stat, stat.context["platform"]).name.split("_")[4], stat.context["platform"])
             self.assertFalse(dyn.context["platform"].endswith("-static"))
 
     def test_static_identity_composes_with_libc(self):

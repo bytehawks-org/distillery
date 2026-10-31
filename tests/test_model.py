@@ -120,8 +120,8 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(arm_musl.variant_data["sha256"], "b" * 64)         # no arm64-musl pin: falls back to the arch pin
         self.assertNotEqual(glibc.recipe_sha256, musl.recipe_sha256)
         from bhdistillery.store import entry_for
-        self.assertEqual(entry_for(glibc, glibc.context["platform"]).name.split("--")[4], "amd64")      # names of glibc unchanged
-        self.assertEqual(entry_for(musl, musl.context["platform"]).name.split("--")[4], "amd64-musl")
+        self.assertEqual(entry_for(glibc, glibc.context["platform"]).name.split("_")[4], "amd64")      # names of glibc unchanged
+        self.assertEqual(entry_for(musl, musl.context["platform"]).name.split("_")[4], "amd64-musl")
         with self.assertRaises(ModelError):
             Catalog(apply_root(CONFIG, "/r"), packages, libc="uclibc")
 

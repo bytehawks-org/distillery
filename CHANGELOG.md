@@ -5,6 +5,17 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 
 ## [Unreleased]
 
+### Added
+- **Builder and runtime images** (`docker/`): `builder-{glibc,musl}` with the whole toolchain, python environment, gpg, bubblewrap and checksum-verified nfpm;
+  `runtime-{glibc,musl}` as a `--base` for `image`. `builder-images.yml` builds them on pull requests and publishes to ghcr.io; `build-platform.yml`
+  skips its toolchain installation when the image already has it and records `BH_BUILDER_IMAGE`. See `docs/BUILDER-IMAGES.md`.
+
+### Changed
+- **Artifact names** are `<package>_<holder>_<variant>_<tag>_<platform>_<version>_<recipe12>`: the field separator is `_` instead of `--`, so no
+  name contains a double hyphen, and the holder (`bh` for ByteHawks) is `artifacts.holder` / `BH_HOLDER`. A field containing `_` is refused. Stores list only
+  their holder's names. The layout is `artifacts.name_order` (default: holder right after the package, `nginx_bh_stable_application_amd64_1.28.0_a1146e116dea`).
+  Artifacts named the old way are not recognised (nothing had been published yet); `stale --github-output` also emits `holder` and the `pattern` that matches them.
+
 ### Fixed
 - nginx: `conf/nginx.conf` (installed by `make install`, rendered over by `shaker init`) is `mutable`, so `shaker verify --files` passes after init.
 - **The recipe hash depended on the number of CPU cores** (`make -j{{ jobs }}` was resolved with the machine's value before hashing), so an
