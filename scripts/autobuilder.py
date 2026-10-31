@@ -80,6 +80,15 @@ def make_parser():
     common(p_sbom)
     p_sbom.add_argument("--out", help="write the document here instead of stdout")
 
+    p_image = sub.add_parser("image", help="OCI archive of a built service and its dependencies (docker/podman load)")
+    common(p_image)
+    p_image.add_argument("--out", help="archive to write (default <name>-<version>-<platform>.oci.tar)")
+    p_image.add_argument("--image-tag", dest="image_tag", help="image name:tag (default bytehawks/<name>:<version>)")
+    p_image.add_argument("--entrypoint", choices=["shaker", "direct"], default="shaker",
+                         help="shaker: ENTRYPOINT is `shaker run` (needs bash and --shaker-dir); direct: the package's own command, no shell needed")
+    p_image.add_argument("--shaker-dir", help="a Shaker checkout to copy into the image (default <core_path>/shaker when present)")
+    p_image.add_argument("--base", help="OCI image layout directory to build on (e.g. skopeo copy docker://debian:12-slim oci:DIR:latest); default FROM scratch")
+
     p_bundle = sub.add_parser("bundle", help="write the Shaker bundle without building")
     common(p_bundle)
     p_bundle.add_argument("--out", help="output directory (default: <prefix>/.bytehawks[/<package>])")
@@ -191,7 +200,7 @@ def load_catalog(args):
 COMMANDS = {
     "list": commands.cmd_list, "plan": commands.cmd_plan, "build": commands.cmd_build,
     "bundle": commands.cmd_bundle, "checksum": commands.cmd_checksum, "outdated": commands.cmd_outdated,
-    "bump": commands.cmd_bump, "repro": commands.cmd_repro, "sbom": commands.cmd_sbom, "sign": commands.cmd_sign, "scaffold": commands.cmd_scaffold, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
+    "bump": commands.cmd_bump, "repro": commands.cmd_repro, "sbom": commands.cmd_sbom, "image": commands.cmd_image, "sign": commands.cmd_sign, "scaffold": commands.cmd_scaffold, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
     "affected": commands.cmd_affected, "chain": commands.cmd_chain, "restore": commands.cmd_restore,
     "publish": commands.cmd_publish, "verify": commands.cmd_verify,
 }
