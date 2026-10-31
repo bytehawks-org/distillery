@@ -11,6 +11,7 @@ Distillery after a successful build (or by `bundle`):
 ├── files.sha256                every file/directory the build installed, with SHA-256 (tamper check)
 ├── bundle.sha256               SHA-256 of the files below and of files.sha256 (sha256sum format)
 ├── bundle.sha256.asc           optional OpenPGP signature of bundle.sha256
+├── sbom.cdx.json               CycloneDX 1.5 SBOM of the build (real builds only), covered by bundle.sha256
 ├── rosetta.map                 parameters
 ├── runtime.spec                runtime behaviour
 └── assets/                     templates and hooks copied from distillery/assets/<package>/
@@ -78,6 +79,7 @@ Paths are relative to the root (`/opt/bytehawks`). Written by `build` (not by `b
 <64 hex>  manifest.env
 <64 hex>  rosetta.map
 <64 hex>  runtime.spec
+<64 hex>  sbom.cdx.json                (real builds)
 <64 hex>  files.sha256
 <64 hex>  assets/<file>                    one line per asset
 ```
