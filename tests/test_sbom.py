@@ -85,7 +85,7 @@ class SbomTests(unittest.TestCase):
             path = unit.bundle_dir / "sbom.cdx.json"
             doc = json.loads(path.read_text())
             self.assertEqual(doc["metadata"]["component"]["name"], "app")
-            self.assertIn("toolchain:make", {c["name"] for c in doc["metadata"]["tools"]["components"]})
+            self.assertIn("toolchain:libc", {c["name"] for c in doc["metadata"]["tools"]["components"]})
             sealed = (unit.bundle_dir / "bundle.sha256").read_text()
             self.assertIn("  sbom.cdx.json\n", sealed)
             files = (unit.bundle_dir / "files.sha256").read_text()
