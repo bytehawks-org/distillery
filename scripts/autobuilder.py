@@ -76,6 +76,10 @@ def make_parser():
     p_repro.add_argument("--jobs", type=int, help="parallel jobs (default: CPU count)")
     p_repro.add_argument("--stages", default=",".join(DEFAULT_STAGES), help=f"comma list among {','.join(STAGES)}")
 
+    p_sbom = sub.add_parser("sbom", help="print the CycloneDX SBOM of a unit and what it is built with")
+    common(p_sbom)
+    p_sbom.add_argument("--out", help="write the document here instead of stdout")
+
     p_bundle = sub.add_parser("bundle", help="write the Shaker bundle without building")
     common(p_bundle)
     p_bundle.add_argument("--out", help="output directory (default: <prefix>/.bytehawks[/<package>])")
@@ -187,7 +191,7 @@ def load_catalog(args):
 COMMANDS = {
     "list": commands.cmd_list, "plan": commands.cmd_plan, "build": commands.cmd_build,
     "bundle": commands.cmd_bundle, "checksum": commands.cmd_checksum, "outdated": commands.cmd_outdated,
-    "bump": commands.cmd_bump, "repro": commands.cmd_repro, "sign": commands.cmd_sign, "scaffold": commands.cmd_scaffold, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
+    "bump": commands.cmd_bump, "repro": commands.cmd_repro, "sbom": commands.cmd_sbom, "sign": commands.cmd_sign, "scaffold": commands.cmd_scaffold, "package": commands.cmd_package, "inventory": commands.cmd_inventory, "stale": commands.cmd_stale,
     "affected": commands.cmd_affected, "chain": commands.cmd_chain, "restore": commands.cmd_restore,
     "publish": commands.cmd_publish, "verify": commands.cmd_verify,
 }

@@ -15,7 +15,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import BUNDLE_SCHEMA, __version__
+from . import BUNDLE_SCHEMA, __version__, sbom
 from .templates import resolve_dict_templates
 
 RUNTIME_TYPES = ("string", "secret", "int", "uint", "port", "bool", "path")
@@ -192,6 +192,8 @@ def emit(unit, assets_root, out_dir=None, built=False, toolchain=None, built_epo
     data = manifest(unit, built, toolchain, built_epoch)
     (out / "manifest.json").write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
     (out / "manifest.env").write_text(manifest_env(data))
+    if built:                                            # an SBOM describes a real build, like built_at and the toolchain
+        (out / SBOM).write_text(sbom.render(unit, toolchain, data.get("built_at")))
 
     assets = Path(assets_root) / unit.name
     if assets.is_dir():
@@ -205,6 +207,7 @@ def emit(unit, assets_root, out_dir=None, built=False, toolchain=None, built_epo
 
 
 SEAL = "bundle.sha256"
+SBOM = "sbom.cdx.json"
 
 
 def seal(bundle_dir, config=None, log=print):
@@ -217,7 +220,7 @@ def seal(bundle_dir, config=None, log=print):
     from . import signature
 
     bundle_dir = Path(bundle_dir)
-    names = [n for n in ("manifest.json", "manifest.env", "rosetta.map", "runtime.spec", "files.sha256")
+    names = [n for n in ("manifest.json", "manifest.env", "rosetta.map", "runtime.spec", SBOM, "files.sha256")
              if (bundle_dir / n).is_file()]
     names += sorted(p.relative_to(bundle_dir).as_posix() for p in (bundle_dir / "assets").rglob("*") if p.is_file()) \
         if (bundle_dir / "assets").is_dir() else []

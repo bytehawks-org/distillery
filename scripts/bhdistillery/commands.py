@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from . import bump as bumper
-from . import bundle, fetch, repro, store as stores_mod
+from . import bundle, fetch, repro, sbom, store as stores_mod
 from .build import DEFAULT_STAGES, STAGES, ensure_unit, restore_unit
 from .model import Catalog, ModelError, publish_tag
 from .store import MultiStore, StoreError, Unsupported, entry_for, open_store
@@ -111,6 +111,18 @@ def cmd_repro(catalog, args):
     print(f"NOT reproducible: {unit.name} {unit.variant_data['full_version']} "
           f"({sum(len(v) for v in differences.values())} of {count} paths differ)")
     return 3
+
+
+def cmd_sbom(catalog, args):
+    """CycloneDX SBOM of a unit and everything it is built with, from the catalog (no build needed)."""
+    unit = catalog.unit(args.package, args.variant, args.tag)
+    catalog.plan(unit)
+    text = sbom.render(unit)
+    if args.out:
+        Path(args.out).write_text(text)
+        eprint(f"wrote {args.out} ({len(sbom.closure(unit)) + 1} components)")
+    else:
+        sys.stdout.write(text)
 
 
 def cmd_bundle(catalog, args):

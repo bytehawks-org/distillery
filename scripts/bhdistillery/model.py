@@ -234,6 +234,7 @@ class Catalog:
         base["src_dir"] = resolve_template(
             "{{ config.default_src_path }}/{{ name }}-{{ full_version }}", base)
         base["git"] = resolve_dict_templates(base["git"], base)
+        base["website"] = resolve_template(base["website"], base)
         return base
 
     def dependencies(self, unit):

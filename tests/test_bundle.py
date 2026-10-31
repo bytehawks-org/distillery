@@ -87,7 +87,7 @@ class BundleTests(unittest.TestCase):
             self.assertEqual([p.name for p in written], ["bundle.sha256"])
             lines = (out / "bundle.sha256").read_text().splitlines()
             names = [l.split("  ", 1)[1] for l in lines]
-            self.assertEqual(names, ["manifest.json", "manifest.env", "rosetta.map", "runtime.spec", "files.sha256",
+            self.assertEqual(names, ["manifest.json", "manifest.env", "rosetta.map", "runtime.spec", "sbom.cdx.json", "files.sha256",
                                      "assets/demo.conf.tmpl"])
             for line in lines:
                 digest, name = line.split("  ", 1)
@@ -121,7 +121,7 @@ class BundleTests(unittest.TestCase):
             unit = unit_with({"env": [{"name": "BH_DEMO_A"}]})
             out = bundle.emit(unit, t / "assets", t / "out", built=True)
             self.assertEqual({p.name for p in out.iterdir()},
-                             {"manifest.json", "manifest.env", "rosetta.map", "runtime.spec", "assets"})
+                             {"manifest.json", "manifest.env", "rosetta.map", "runtime.spec", "sbom.cdx.json", "assets"})
             manifest = json.loads((out / "manifest.json").read_text())
             self.assertEqual(manifest["package"], "demo")
             self.assertEqual(manifest["recipe_sha256"], unit.recipe_sha256)
