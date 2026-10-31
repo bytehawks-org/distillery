@@ -55,7 +55,9 @@ docker run -e BH_NGINX_PORT=9000 bytehawks/nginx:1.28.0         # Shaker initial
 A static nginx (glibc, Ubuntu 24.04, `--linkage static`, built in the `unshare` sandbox) as a `FROM scratch` image, with docker 29 on this
 host: 4 layers (openssl 7.8 MB, zlib 0.1 MB, pcre2 1.7 MB, nginx 5.7 MB; 15 MB archive), `docker run` → master and workers as uid 1001,
 `HTTP/1.1 200 OK`. The same unit in Shaker mode on a base made of bash and coreutils (17 MB): Shaker renders `nginx.conf` from
-`BH_NGINX_PORT=8081`, drops nothing (already uid 1001), nginx answers on 8081.
+`BH_NGINX_PORT=8081`, drops nothing (already uid 1001), nginx answers on 8081; `shaker verify nginx --files` inside the container:
+`bundle digest 7 files match` (the SBOM is one of them), `installed files 29 paths intact, 1 mutable skipped`, `user nginx uid 1001`, template in sync,
+health open - 12 ok, 1 warning (`no install record`: `shaker install` was not run at image build; the image bakes its effects instead).
 
 ## Limits
 

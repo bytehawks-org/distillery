@@ -6,11 +6,18 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 ## [Unreleased]
 
 ### Fixed
+- nginx: `conf/nginx.conf` (installed by `make install`, rendered over by `shaker init`) is `mutable`, so `shaker verify --files` passes after init.
 - **The recipe hash depended on the number of CPU cores** (`make -j{{ jobs }}` was resolved with the machine's value before hashing), so an
   artifact built on a 4-core runner was `superseded` for a 16-core one. `jobs` is now a constant in the hash; the build still uses the real value.
   Hashes of units that use `{{ jobs }}` change once (nothing had been published yet).
 
 ### Added
+- **SBOM.** Every real build writes `sbom.cdx.json` (CycloneDX 1.5: the unit, every unit it was built with, hashes, licences, toolchain) into the
+  bundle, listed in `bundle.sha256`; `autobuilder.py sbom` prints it from the catalog. Validated against the CycloneDX schema in the tests.
+- **`image`.** OCI archive of a built service and its dependencies (one layer per unit): ENTRYPOINT `shaker run` (with `--base` and
+  `--shaker-dir`) or the package's own command (`--entrypoint direct`, `FROM scratch` with a static unit); contract user, directories,
+  labels and stop signal in the config; deterministic. Loaded and run with docker: a static nginx from scratch, and the Shaker mode on a bash base
+  with `shaker verify --files` passing inside the container. See `docs/IMAGE.md`, `docs/SBOM.md`.
 - **Sandboxed builds.** `--sandbox auto|bwrap|unshare` / `build.sandbox`: stages run with a read-only system, private `/tmp`, own PID/IPC/UTS
   namespaces and no network, writable only in the source tree, the prefix and the log directory; `build: {network: true}` per package.
 - **Reproducibility.** `--reproducible` / `build.reproducible` fixes `SOURCE_DATE_EPOCH`, `TZ` and the locale; new `repro` command builds a unit

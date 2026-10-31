@@ -38,7 +38,7 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| ⬜ SBOM | emit CycloneDX (and SPDX) per unit: components = source + dependencies with hashes; ship as `sbom.cdx.json` in the bundle and list it in `bundle.sha256` (**contract**: Shaker `verify` can report it) |
+| 🚧 SBOM | ✅ CycloneDX 1.5 per unit (unit + dependencies, hashes, licences, toolchain) in the sealed bundle, `sbom` command, schema-validated; ⬜ SPDX, ⬜ Shaker reporting it, ⬜ SBOM of binary repacks' contents |
 | 🚧 Source signature verification | ✅ OpenPGP (`signature:` block, pinned signer fingerprints, checked in `build` before extraction and in `bump` before pinning; nifi, temurin); ⬜ minisign/cosign, ⬜ enforcement for the older packages (openssl, nginx, zlib, pcre2) |
 | 🚧 Installed-file inventory | ✅ `files.sha256`, `autobuilder.py verify`, Shaker `verify --files`, `mutable` paths; ⬜ mode/owner |
 | ⬜ Vulnerability gate | optional `grype`/`trivy` run on SBOM in CI; fail on severity threshold |
@@ -79,7 +79,7 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| ⬜ `image` | generate a multi-stage Dockerfile / OCI image: builder stage, runtime stage (distroless/slim) with Shaker as ENTRYPOINT, labels from the manifest (version, recipe, source hashes) |
+| 🚧 `image` | ✅ OCI archive of a built service (layers per unit, labels, contract user/command), Shaker or direct entrypoint, `FROM scratch` for static units, base layout support; run with docker (static nginx from scratch; Shaker mode on a bash base); ⬜ push to a registry, ⬜ multi-arch index, ⬜ Dockerfile output, ⬜ musl static build of the catalog |
 | 🚧 `package` | ✅ deb / rpm / apk via nfpm from `files.sha256`, naming templates, exact dependencies, conflicts, Shaker post-install, package signing; ✅ real nfpm 2.48 (catalog unit): deb extracted and `java` run, rpm headers and apk `.PKGINFO` checked, NiFi chain (803 MB deb, exact `Depends`, postinst) ; ⬜ installed with dpkg/rpm/apk on real hosts, ⬜ repository metadata (apt/createrepo/APKINDEX), ⬜ musl units for Alpine, ✅ nfpm as a catalog unit (`build --package nfpm`) |
 | ⬜ `k8s` | Helm/Kustomize skeleton from `rosetta.map` and `runtime.spec` (**contract**) |
 | ⬜ Release manifest | one signed index of all bundles/versions of a release, consumed by Shaker for multi-package `up` |
