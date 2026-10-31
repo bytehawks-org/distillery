@@ -5,6 +5,11 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
 
 ## [Unreleased]
 
+### Fixed
+- **The recipe hash depended on the number of CPU cores** (`make -j{{ jobs }}` was resolved with the machine's value before hashing), so an
+  artifact built on a 4-core runner was `superseded` for a 16-core one. `jobs` is now a constant in the hash; the build still uses the real value.
+  Hashes of units that use `{{ jobs }}` change once (nothing had been published yet).
+
 ### Added
 - **Sandboxed builds.** `--sandbox auto|bwrap|unshare` / `build.sandbox`: stages run with a read-only system, private `/tmp`, own PID/IPC/UTS
   namespaces and no network, writable only in the source tree, the prefix and the log directory; `build: {network: true}` per package.
