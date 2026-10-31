@@ -64,6 +64,15 @@ reproducible: zlib 1.3.1, 11 paths identical in two builds
 
 Measured: `zlib` (11 paths) and `nginx` 1.28.0 with its openssl and pcre2 (22 paths) are bit-identical in two builds on Ubuntu 24.04 / gcc 13 in the `unshare` sandbox.
 
+## `sbom`
+`sbom --package P [--out FILE]`: the CycloneDX 1.5 JSON of a unit and everything it is built with, from the catalog (no build needed).
+Real builds also write it into the bundle (`sbom.cdx.json`, listed in `bundle.sha256`, so signed and shipped). See [SBOM](SBOM.md).
+
+## `image`
+`image --package P [--out FILE] [--image-tag NAME:TAG] [--entrypoint shaker|direct] [--shaker-dir DIR] [--base LAYOUT]`: an OCI archive of a
+**built** service and the units it was built with, loadable with `docker load` / `podman load`. Refuses a unit that is not built for the
+current recipe or whose installed files differ from the build. See [IMAGE](IMAGE.md).
+
 ## `build`
 
 | Option | |

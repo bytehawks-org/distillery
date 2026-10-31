@@ -18,6 +18,7 @@ this manual shows how the pieces fit.
 | [9](#9-signing) | Signing artifacts and bundles, trust at the consumer |
 | [10](#10-native-packages) | deb / rpm / apk |
 | [11](#11-glibc-musl-and-static) | Platforms |
+| [11b](#11b-confined-builds-reproducibility-sbom-and-images) | Sandbox, `repro`, SBOM, images |
 | [12](#12-automation-on-github) | The workflows |
 | [13](#13-with-shaker-or-without) | Delivering to a host |
 | [14](#14-troubleshooting) | Messages you will meet |
@@ -425,6 +426,21 @@ dynamic loader (`amd64-static`, `amd64-musl-static`); the build checks the ELF h
 dynamic. Static on musl is the self-contained option; on glibc it still needs the same glibc at run time for NSS, and valkey
 loses Lua. Read [STATIC](STATIC.md) before you rely on it.
 
+## 11b. Confined builds, reproducibility, SBOM and images
+
+```sh
+ab build --package zlib --sandbox auto            # read-only system, private /tmp, no network (bwrap, else unshare, else none)
+ab repro --package nginx --with-deps --sandbox auto
+# reproducible: nginx 1.28.0, 22 paths identical in two builds
+ab sbom  --package nginx --tag application --out nginx.cdx.json      # CycloneDX 1.5; real builds also keep it in the bundle
+ab image --package nginx --tag application --linkage static --entrypoint direct      # OCI archive, FROM scratch
+docker load -i nginx-1.28.0-amd64-static.oci.tar && docker run -d --network host bytehawks/nginx:1.28.0-static
+```
+`repro` builds the unit twice with a fixed `SOURCE_DATE_EPOCH`, `TZ` and locale and compares every installed file; a build that embeds
+the clock is reported as `different`. `build.sandbox` / `build.reproducible` in `config.yaml` make them the default. The toolchain
+that built a unit (compiler, linker, make, libc, OS) is recorded in `manifest.json`. See [SECURITY](SECURITY.md), [SBOM](SBOM.md),
+[IMAGE](IMAGE.md).
+
 ## 12. Automation on GitHub
 
 | Workflow | When | What |
@@ -471,6 +487,7 @@ ab stale --store S [--all|--exit-code]        ab chain --store S [--artifacts-di
 ab publish --from D --store S                 ab inventory --store S        ab sign --from D
 ab restore --package P --with-deps --store S  ab verify --package P --with-deps
 ab package --package P --with-deps [--dry-run]            ab scaffold --package P --from FILE [--write]
+ab repro --package P [--with-deps]            ab sbom --package P [--out F]            ab image --package P [--entrypoint shaker|direct] [--base DIR]
 common: --root DIR  --libc glibc|musl  --linkage dynamic|static  --arch A  --variant V  --tag library|application
 ```
 

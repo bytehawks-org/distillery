@@ -14,6 +14,7 @@ Distillery is the root of trust of the ecosystem: what it builds is what Shaker 
 | Stale or half-built artifact looks installed | bundle (with `built_at`) is written last; recipe hash compared on every build |
 | Silent drift between what was reviewed and what was built | recipe hash covers commands, variant, prefix and dependencies; recorded in `manifest.json` and in Shaker's state |
 | Injection through the bundle formats | `|` and newlines are rejected in every emitted field; `run` must be an argv list, not a shell string |
+| What is inside a unit is unknown to scanners | `sbom.cdx.json` in every sealed bundle (authenticated by `bundle.sha256` and its signature); feed it to grype/trivy/Dependency-Track ([SBOM](SBOM.md)) |
 | A build changes the system or phones home | `--sandbox`: read-only system, no network, writable only where the unit installs |
 | A binary that differs from what was reviewed, undetected | `repro` builds twice with fixed time/locale and compares every file; `manifest.json` records the toolchain |
 | Hard-wired `/opt/bh` | never used in artifacts, so symlink games cannot redirect an installed tree |

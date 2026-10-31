@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from . import bump as bumper
-from . import bundle, fetch, repro, store as stores_mod
+from . import bundle, fetch, image, repro, sbom, store as stores_mod
 from .build import DEFAULT_STAGES, STAGES, ensure_unit, restore_unit
 from .model import Catalog, ModelError, publish_tag
 from .store import MultiStore, StoreError, Unsupported, entry_for, open_store
@@ -111,6 +111,42 @@ def cmd_repro(catalog, args):
     print(f"NOT reproducible: {unit.name} {unit.variant_data['full_version']} "
           f"({sum(len(v) for v in differences.values())} of {count} paths differ)")
     return 3
+
+
+def cmd_sbom(catalog, args):
+    """CycloneDX SBOM of a unit and everything it is built with, from the catalog (no build needed)."""
+    unit = catalog.unit(args.package, args.variant, args.tag)
+    catalog.plan(unit)
+    text = sbom.render(unit)
+    if args.out:
+        Path(args.out).write_text(text)
+        eprint(f"wrote {args.out} ({len(sbom.closure(unit)) + 1} components)")
+    else:
+        sys.stdout.write(text)
+
+
+def cmd_image(catalog, args):
+    """OCI archive of a built service and the units it was built with (docs/IMAGE.md)."""
+    unit = catalog.unit(args.package, args.variant, args.tag)
+    catalog.plan(unit)
+    units = sbom.closure(unit) + [unit]
+    problems = image.check_ready(units)
+    if problems:
+        raise ModelError("; ".join(problems))
+    version = str(unit.variant_data["full_version"])
+    suffix = "" if unit.context["platform"] == catalog.arch else unit.context["platform"][len(catalog.arch):]
+    tag = args.image_tag or f"bytehawks/{unit.name}:{version}{suffix}"
+    out = args.out or f"{unit.name}-{version}-{unit.context['platform']}.oci.tar"
+    shaker_dir = args.shaker_dir
+    if args.entrypoint == "shaker" and not shaker_dir:
+        candidate = Path(unit.context["config"]["core_path"]) / "shaker"
+        shaker_dir = str(candidate) if (candidate / "bin" / "shaker").is_file() else None
+    try:
+        result = image.build(units, out, tag=tag, entrypoint=args.entrypoint, shaker_dir=shaker_dir, base=args.base, log=eprint)
+    except image.ImageError as exc:
+        raise ModelError(str(exc))
+    print(f"wrote {result['out']}: {result['tag']}, {result['layers']} layers, {result['size']} bytes, manifest {result['manifest']}")
+    print(f"  entrypoint {' '.join(result['entrypoint'])}  user {result['user'] or 'root'}")
 
 
 def cmd_bundle(catalog, args):

@@ -186,6 +186,8 @@ package:
         - {path: "{{ prefix }}/html", mode: "g+rX", owner: "1001:0"}
       templates:
         - {src: nginx.conf.tmpl, dest: "{{ prefix }}/conf/nginx.conf", mode: "0640"}
+      mutable:                                  # `make install` ships a default conf/nginx.conf that `shaker init` renders over
+        - "{{ prefix }}/conf/nginx.conf"
       hooks:
         pre_init: "{{ prefix }}/hooks/pre-init.d"
         first_init: "{{ prefix }}/hooks/init.d"
