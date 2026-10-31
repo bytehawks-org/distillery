@@ -106,8 +106,8 @@ class BuildTests(unittest.TestCase):
             unit = self.unit(t, "mkdir -p {{ prefix }}/bin && echo ok > {{ prefix }}/bin/demo", toolchain=["perl"])
             build_unit(unit, t / "assets", artifacts_dir=t / "dist", log=QUIET)
             manifest = json.loads((unit.bundle_dir / "manifest.json").read_text())
-            self.assertIn("make", manifest["toolchain"])
-            self.assertIn("libc", manifest["toolchain"])
+            self.assertIn("libc", manifest["toolchain"])                  # always known; compilers only when the host has them
+            self.assertIn("machine", manifest["toolchain"])
             side = json.loads(next((t / "dist").glob("*.json")).read_text())
             self.assertEqual(side["toolchain"], manifest["toolchain"])
 
@@ -133,7 +133,7 @@ class ReproTests(unittest.TestCase):
 
     def test_embedded_clock_is_caught(self):
         with TempDir() as t:
-            identical, diff, _ = self.check(t, "mkdir -p {{ prefix }}/bin && date +%s%N > {{ prefix }}/bin/demo")
+            identical, diff, _ = self.check(t, "mkdir -p {{ prefix }}/bin && echo $RANDOM$RANDOM$RANDOM > {{ prefix }}/bin/demo")
             self.assertFalse(identical)
             self.assertTrue(any(p.endswith("bin/demo") for p in diff["different"]))
 
