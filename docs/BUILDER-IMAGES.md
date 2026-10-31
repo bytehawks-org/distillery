@@ -58,6 +58,7 @@ See [IMAGE](IMAGE.md).
 
 * The image content depends on the distribution's repositories at build time; the weekly rebuild picks up their updates. For a frozen toolchain pin `BASE`
   by digest and keep the image tag you built from.
-* The Dockerfiles were linted with `docker build --check` (no warnings) but **could not be built in the environment they were written in**
-  (the package mirrors of Debian and Alpine were not reachable there); the first run of `builder-images` is their first real build.
+* The four Dockerfiles were linted with `docker build --check` and then built by the `builder-images` workflow on GitHub (pull request run,
+  linux/amd64, no push): all four succeeded. They could not be built where they were written (Debian and Alpine mirrors unreachable there).
+  The arm64 build and the push to ghcr.io happen for the first time on the first run from `main` or a manual dispatch.
 * No SBOM of the images themselves yet: scan them with your registry's scanner.

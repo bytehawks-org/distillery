@@ -20,7 +20,7 @@ Legend: ☐ to do · every step is non-destructive (artifacts expire, pull reque
 ### 0b. Builder images (optional, recommended; saves the toolchain installation of every job)
 
 1. Actions → `builder-images` → *Run workflow* (push ✔). It builds `bytehawks-builder` and `bytehawks-runtime`, `glibc` and `musl`, and pushes them to `ghcr.io/<owner>/`.
-   These Dockerfiles were linted but never built where they were written (no access to the Debian/Alpine mirrors): a failure here is expected material, fix it first.
+   The amd64 build of all four already passed in the pull request run; what is new here is the arm64 build (QEMU) and the push to ghcr.io, so a failure is most likely in one of those.
 2. Make the packages readable by the repository (package settings → Manage Actions access) or public.
 3. Set the repository variables `BH_BUILDER_IMAGE=ghcr.io/<owner>/bytehawks-builder:glibc` and `BH_BUILDER_IMAGE_MUSL=ghcr.io/<owner>/bytehawks-builder:musl`.
    The next `build` logs `toolchain already present`, and every manifest records the image in `toolchain.builder_image`. Details: [BUILDER-IMAGES](BUILDER-IMAGES.md).
