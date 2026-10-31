@@ -29,7 +29,7 @@ the package. `${...}` is **not** touched (left for Shaker).
 | `prefix`, `default_prefix` | install prefix: `libraries.default_prefix` or `applications.default_prefix` |
 | `deps_prefix` | `libraries.default_prefix` (where dependencies are installed) |
 | `src_dir` | `<default_src_path>/<name>-<full_version>` (cwd of the build) |
-| `jobs` | CPU count or `--jobs` |
+| `jobs` | CPU count or `--jobs` (not part of the recipe hash: the same recipe gives the same hash on any machine) |
 | `git.*` | the (resolved) `git:` block |
 | `config.*` | the `config:` block of `config.yaml` |
 | `website` | |

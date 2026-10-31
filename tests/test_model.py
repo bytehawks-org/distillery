@@ -142,3 +142,24 @@ class ModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JobsTests(unittest.TestCase):
+    def test_recipe_hash_does_not_depend_on_the_number_of_jobs(self):
+        with TempDir() as t:
+            digest = make_tarball(t / "d.tgz", {"README": "x"}, top="demo-1.0")
+            pkg = package((t / "d.tgz").as_uri(), digest, commands={"make": "make -j{{ jobs }}"}, env={"J": "{{ jobs }}"})
+            hashes = set()
+            for jobs in (1, 4, 64):
+                cat = Catalog(apply_root(CONFIG, t / "root"), {"package": {"demo": pkg}}, jobs=jobs)
+                unit = cat.unit("demo")
+                cat.plan(unit)
+                hashes.add(unit.recipe_sha256)
+            self.assertEqual(len(hashes), 1)
+            self.assertIn("make -j4", stage_script_text(cat, unit, 4))
+
+
+def stage_script_text(cat, unit, jobs):
+    from bhdistillery.build import stage_script
+    other = Catalog(apply_root(CONFIG, "/r"), {"package": {"demo": unit.package}}, jobs=jobs)
+    return stage_script(other.unit("demo"), ("make",))
