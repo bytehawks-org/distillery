@@ -132,8 +132,10 @@ scratch branch). Predicted: a branch `bot/upstream-zlib`, one pull request, `ci`
 ☐ Set `vars.NEXUS_URL`, `secrets.NEXUS_USER` / `NEXUS_PASSWORD`; re-run step 2.
 
 Predicted: `publish-nexus` uploads `.tar.gz`, `.json` and `.json.asc` for each artifact; `inventory --store nexus` lists them;
-`restore --store nexus` on a clean root works. **Never tested against a real Nexus** (only a fake server): pagination, raw
-repository layout, credentials, large uploads (~0.8 GB) are the unknowns. Record the Nexus version.
+`restore --store nexus` on a clean root works. Already verified by hand against Nexus 3.97.3 Community (publish, inventory, stale, signed
+restore, foreign signer refused, 150 MB through a reverse proxy); the remaining unknowns are pagination beyond one page and an ~0.8 GB upload
+(set `client_max_body_size 0` on the proxy). Nexus Community has no API keys: create a **service user with a password** (role
+`nx-repository-view-raw-bytehawks-*`) and store it as `NEXUS_USER` / `NEXUS_PASSWORD`.
 
 ## 9. Packages (not in CI yet)
 

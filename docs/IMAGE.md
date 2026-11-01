@@ -59,10 +59,26 @@ host: 4 layers (openssl 7.8 MB, zlib 0.1 MB, pcre2 1.7 MB, nginx 5.7 MB; 15 MB a
 `bundle digest 7 files match` (the SBOM is one of them), `installed files 29 paths intact, 1 mutable skipped`, `user nginx uid 1001`, template in sync,
 health open - 12 ok, 1 warning (`no install record`: `shaker install` was not run at image build; the image bakes its effects instead).
 
+## Push to a registry
+
+`image` writes an archive; the registry step is the usual one:
+
+```sh
+docker load -i nginx-1.28.0-amd64-static.oci.tar
+docker login registry.example.com -u <service user>          # password on stdin
+docker tag bytehawks/nginx:1.28.0-static registry.example.com/bytehawks/nginx:1.28.0-static
+docker push registry.example.com/bytehawks/nginx:1.28.0-static
+```
+Verified against a Nexus 3.97.3 Community Docker registry behind a reverse proxy: login, push of the static nginx image (4 layers), `_catalog` and
+tag listing, then pull on a clean daemon and `docker run`: HTTP 200 as uid 1001. A 200 MB layer pushed in 14 s through the proxy (the probe image was
+deleted afterwards). `skopeo copy oci-archive:FILE docker://...` does the same without a daemon.
+
 ## Limits
 
 * One platform per image (the unit's); no multi-arch index. Build per architecture and combine with your registry tooling.
 * The base is a *single-image* OCI layout directory; Distillery neither pulls nor pushes. Use `skopeo`/`docker save` for that.
 * Whiteouts of the base are not interpreted when reading `/etc/passwd`; a base that deletes the file in a later layer is not detected.
+* A Nexus Docker registry needs the **Docker Bearer Token** realm active (Security → Realms): without it `/v2/` answers a Bearer challenge that
+  no token satisfies and `docker login` fails with 401, although basic authentication works (found, then confirmed fixed, on a real instance).
 * No `HEALTHCHECK`: a scratch image has no tool to run one. Probe the TCP port declared by the `health` record from outside.
 * A static glibc service still needs a compatible glibc for NSS lookups (see [STATIC](STATIC.md)); prefer a musl static build for scratch images.

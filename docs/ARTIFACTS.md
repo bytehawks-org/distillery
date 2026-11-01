@@ -116,12 +116,13 @@ artifacts:
 ```
 | | |
 |---|---|
-| Upload | `PUT` of tarball then sidecar, HTTP basic (`NEXUS_USER`/`NEXUS_PASSWORD`; a user token pair works) |
-| Listing | `GET /service/rest/v1/assets?repository=<repo>` with `continuationToken` paging; entries are rebuilt from the path, the asset's `checksum.sha256` is used for verification |
+| Upload | `PUT` of tarball then sidecar (and `.json.asc`), HTTP basic (`NEXUS_USER`/`NEXUS_PASSWORD`). Nexus Community has no API keys and no user tokens (Pro): use a service user with a password. Publishing an artifact that is already there is a no-op (`[have]`) |
+| Listing | `GET /service/rest/v1/assets?repository=<repo>` with `continuationToken` paging; entries are rebuilt from the path (Nexus 3.97 reports it with a leading `/`, older versions without: both are handled), the asset's `checksum.sha256` is used for verification, `fileSize` for the size |
 | Download | `GET` of the tarball and the sidecar |
 | Nexus setup | create a *raw (hosted)* repository (`bytehawks`), write policy "Allow redeploy" off (immutability: names are content-addressed), a role with `nx-repository-view-raw-bytehawks-add,edit,read,browse` for CI and `...-read,browse` for consumers; a cleanup policy by age for superseded versions |
 | Enable in CI | repository variable `NEXUS_URL` (+ `config.yaml` repo/prefix), secrets `NEXUS_USER`, `NEXUS_PASSWORD`; `build.yml` then adds `--store nexus` and the `publish-nexus` job |
-| Status | implemented against the documented Nexus 3 REST/raw API and tested with a fake server; **not yet exercised against a real Nexus** |
+| Raw repository gotcha | strict content validation: a name whose type Nexus cannot determine is refused with `400 Content type could not be determined` (`.bin`); the names Distillery uses (`.tar.gz`, `.json`, `.json.asc`) are accepted |
+| Status | exercised against Nexus 3.97.3 Community behind a reverse proxy: publish (tarball, sidecar, signature), `inventory`, `stale`, `restore` of a signed artifact into a clean root (`require: true`), refusal of a foreign signer and of a wrong password; a 150 MB `PUT` and `GET` through the proxy (201, identical bytes). Not yet: pagination beyond one page, an 800 MB artifact |
 
 ### Adding another backend
 Subclass `Store` in `scripts/bhdistillery/store.py`: `inventory()`, `fetch(entry, dest)`, optionally

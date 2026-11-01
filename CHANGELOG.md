@@ -17,6 +17,7 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may break).
   Artifacts named the old way are not recognised (nothing had been published yet); `stale --github-output` also emits `holder` and the `pattern` that matches them.
 
 ### Fixed
+- **Nexus 3.97**: `inventory` was empty because the REST listing reports asset paths with a leading `/` (found against a real instance; the fake server in the tests did not); sizes are read from `fileSize`.
 - nginx: `conf/nginx.conf` (installed by `make install`, rendered over by `shaker init`) is `mutable`, so `shaker verify --files` passes after init.
 - **The recipe hash depended on the number of CPU cores** (`make -j{{ jobs }}` was resolved with the machine's value before hashing), so an
   artifact built on a 4-core runner was `superseded` for a 16-core one. `jobs` is now a constant in the hash; the build still uses the real value.

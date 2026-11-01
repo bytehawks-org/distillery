@@ -16,7 +16,7 @@ matching change in the bundle schema / Shaker.
 | 3 | **Bundle contract v1**: `runtime.spec`, `manifest.json/env`, assets | ✅ |
 | 5 | Real chain built end to end: openssl → zlib → pcre2 → nginx 1.28 | ✅ |
 | 6 | **Upstream watcher** (`outdated`, `bump`, daily workflow, PR per package) | ✅ code + tests; ⬜ first run on GitHub |
-| 6 | **Artifact stores** (dir, GitHub Actions artifacts, Nexus raw), `restore`, `publish`, `inventory` | ✅ dir/github (API listing verified); 🚧 Nexus tested on a fake server only |
+| 6 | **Artifact stores** (dir, GitHub Actions artifacts, Nexus raw), `restore`, `publish`, `inventory` | ✅ dir/github (API listing verified); ✅ Nexus 3.97.3 Community (see below) |
 | 6 | **Affected-only build chain** (`stale`, `chain`, build workflow libs → apps) | ✅ code + tests; ⬜ first run on GitHub |
 | 6 | Installed-file inventory (`files.sha256`, `verify`) | ✅ (Shaker `verify --files` ✅) |
 | 7 | **Shaker integration**: platform check, `mutable`, sealed + signed bundle, `shaker restore` (docs/INTEGRATION.md) | ✅ tested with a real NiFi chain; ✅ `shaker up` (dependency order), ⬜ Shaker as a catalog unit / package |
@@ -51,7 +51,7 @@ matching change in the bundle schema / Shaker.
 | Item | Detail |
 |---|---|
 | ⬜ **First real run** | execute `ci`, `build` (glibc + musl legs), `watch-upstream` on GitHub, fix what only the platform reveals (same-run artifact visibility, JavaScript actions in the Alpine container, PR token behaviour): [docs/FIRST-RUN.md](docs/FIRST-RUN.md) is the checklist |
-| ⬜ Nexus on a real instance | run `publish`/`inventory`/`restore` against Nexus 3 OSS, adjust listing/pagination quirks |
+| 🚧 Nexus on a real instance | ✅ publish / inventory / stale / signed restore against Nexus 3.97.3 Community (a listing quirk fixed: leading `/` in asset paths); ✅ image push/pull/run through its Docker registry (needs the Docker Bearer Token realm); ⬜ pagination beyond one page, ⬜ an 800 MB upload |
 | ⬜ `prune` | remove superseded artifacts older than N days / keep last K per unit in a store; scheduled |
 | ⬜ Failure notification | open/update an issue when a scheduled build or a bump fails; weekly digest of outdated series (`newer_series`) |
 | ⬜ Auto-merge policy | opt-in auto-merge of patch bumps when ci + build are green **and** a signature check passed |
@@ -79,7 +79,7 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| 🚧 `image` | ✅ OCI archive of a built service (layers per unit, labels, contract user/command), Shaker or direct entrypoint, `FROM scratch` for static units, base layout support; run with docker (static nginx from scratch; Shaker mode on a bash base); ⬜ push to a registry, ⬜ multi-arch index, ⬜ Dockerfile output, ⬜ musl static build of the catalog |
+| 🚧 `image` | ✅ OCI archive of a built service (layers per unit, labels, contract user/command), Shaker or direct entrypoint, `FROM scratch` for static units, base layout support; run with docker (static nginx from scratch; Shaker mode on a bash base); ✅ push with `docker push` (verified on Nexus), ⬜ an `image --push` command, ⬜ multi-arch index, ⬜ Dockerfile output, ⬜ musl static build of the catalog |
 | 🚧 `package` | ✅ deb / rpm / apk via nfpm from `files.sha256`, naming templates, exact dependencies, conflicts, Shaker post-install, package signing; ✅ real nfpm 2.48 (catalog unit): deb extracted and `java` run, rpm headers and apk `.PKGINFO` checked, NiFi chain (803 MB deb, exact `Depends`, postinst) ; ⬜ installed with dpkg/rpm/apk on real hosts, ⬜ repository metadata (apt/createrepo/APKINDEX), ⬜ musl units for Alpine, ✅ nfpm as a catalog unit (`build --package nfpm`) |
 | ⬜ `k8s` | Helm/Kustomize skeleton from `rosetta.map` and `runtime.spec` (**contract**) |
 | ⬜ Release manifest | one signed index of all bundles/versions of a release, consumed by Shaker for multi-package `up` |
@@ -110,7 +110,7 @@ matching change in the bundle schema / Shaker.
 * OpenSSL targets are mapped for amd64 and arm64 but only amd64 was built here; no cross-compilation.
 * Build commands are trusted shell; `--sandbox` confines them (read-only system, no network) but is off by default.
 * No signature/SBOM; `checksum`/`bump` trust the download they just made (cross-checked with upstream's checksum when published).
-* The workflows pass `actionlint` and their commands are tested, but have not run on GitHub yet; Nexus has only been tested against a fake server.
+* The workflows pass `actionlint` and their commands are tested, but have not run on GitHub yet; Nexus was exercised by hand against a real 3.97.3 Community instance, not yet from CI.
 * GitHub artifacts expire (≤ 90 days): GitHub is a cache, Nexus (or another store) is needed for an archive.
 * openssl 3.0.18 and 3.6.0 variants have never been built here.
 * `file://` and `https://` only; no mirrors/fallback URLs, no retries, no resume.
