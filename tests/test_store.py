@@ -175,6 +175,12 @@ class GithubStoreTests(unittest.TestCase):
 
 class NexusStoreTests(unittest.TestCase):
     def test_publish_list_fetch_roundtrip_with_basic_auth(self):
+        # Nexus 3.97 reports asset paths with a leading slash ("/bytehawks/amd64/..."), older ones without: both must work
+        for slash in ("", "/"):
+            with self.subTest(listing_path_prefix=repr(slash)):
+                self.roundtrip(slash)
+
+    def roundtrip(self, slash):
         assets = {}
 
         def put(handler, body):
@@ -186,8 +192,8 @@ class NexusStoreTests(unittest.TestCase):
             return (200, {}, assets[key]) if key in assets else (404, {}, b"")
 
         def listing(handler, body):
-            items = [{"path": p, "checksum": {"sha256": __import__("hashlib").sha256(v).hexdigest()}}
-                     for p, v in assets.items()] + [{"path": "other/thing.tar.gz"}]
+            items = [{"path": slash + p, "fileSize": len(v), "checksum": {"sha256": __import__("hashlib").sha256(v).hexdigest()}}
+                     for p, v in assets.items()] + [{"path": slash + "other/thing.tar.gz"}]
             return json_response({"items": items, "continuationToken": None})
 
         routes = {("PUT", "/repository/repo/"): put, ("GET", "/repository/repo/"): get,
@@ -203,6 +209,7 @@ class NexusStoreTests(unittest.TestCase):
             inv = s.inventory()
             self.assertEqual([x.name for x in inv], [e.name])
             self.assertEqual(inv[0].sha256, meta["sha256"])
+            self.assertEqual(inv[0].size, len(b"payload"))
             path, got = s.fetch(inv[0], t / "work")
             self.assertEqual(path.read_bytes(), b"payload")
 

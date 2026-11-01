@@ -64,5 +64,7 @@ health open - 12 ok, 1 warning (`no install record`: `shaker install` was not ru
 * One platform per image (the unit's); no multi-arch index. Build per architecture and combine with your registry tooling.
 * The base is a *single-image* OCI layout directory; Distillery neither pulls nor pushes. Use `skopeo`/`docker save` for that.
 * Whiteouts of the base are not interpreted when reading `/etc/passwd`; a base that deletes the file in a later layer is not detected.
+* Pushing to a Nexus Docker registry needs the **Docker Bearer Token** realm active (Security → Realms): without it `/v2/` answers a Bearer challenge that
+  no token satisfies and `docker login` fails with 401, although basic authentication works.
 * No `HEALTHCHECK`: a scratch image has no tool to run one. Probe the TCP port declared by the `health` record from outside.
 * A static glibc service still needs a compatible glibc for NSS lookups (see [STATIC](STATIC.md)); prefer a musl static build for scratch images.

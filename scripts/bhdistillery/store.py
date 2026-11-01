@@ -353,11 +353,11 @@ class NexusStore(Store):
             except urllib.error.URLError as exc:
                 raise StoreError(f"nexus listing failed: {exc}") from exc
             for asset in data.get("items", []):
-                path = asset.get("path", "")
+                path = asset.get("path", "").lstrip("/")        # Nexus 3.97 lists "/prefix/..."; older versions "prefix/..."
                 if not path.startswith(self.prefix + "/") or not path.endswith(".tar.gz"):
                     continue
                 entry = parse_name(path.rsplit("/", 1)[-1][:-len(".tar.gz")], store=self.label, holder=self.holder, order=self.order, ref=path,
-                                   sha256=(asset.get("checksum") or {}).get("sha256", ""),
+                                   sha256=(asset.get("checksum") or {}).get("sha256", ""), size=asset.get("fileSize", 0) or 0,
                                    created_at=asset.get("lastModified", "") or "")
                 if entry:
                     entries[entry.name] = entry
