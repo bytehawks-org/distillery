@@ -51,7 +51,7 @@ matching change in the bundle schema / Shaker.
 | Item | Detail |
 |---|---|
 | ⬜ **First real run** | execute `ci`, `build` (glibc + musl legs), `watch-upstream` on GitHub, fix what only the platform reveals (same-run artifact visibility, JavaScript actions in the Alpine container, PR token behaviour): [docs/FIRST-RUN.md](docs/FIRST-RUN.md) is the checklist |
-| 🚧 Nexus on a real instance | ✅ publish / inventory / stale / signed restore against Nexus 3.97.3 Community (a listing quirk fixed: leading `/` in asset paths); ⬜ pagination beyond one page, ⬜ an 800 MB upload, ⬜ push of images to its Docker registry |
+| 🚧 Nexus on a real instance | ✅ publish / inventory / stale / signed restore against Nexus 3.97.3 Community (a listing quirk fixed: leading `/` in asset paths); ✅ image push/pull/run through its Docker registry (needs the Docker Bearer Token realm); ⬜ pagination beyond one page, ⬜ an 800 MB upload |
 | ⬜ `prune` | remove superseded artifacts older than N days / keep last K per unit in a store; scheduled |
 | ⬜ Failure notification | open/update an issue when a scheduled build or a bump fails; weekly digest of outdated series (`newer_series`) |
 | ⬜ Auto-merge policy | opt-in auto-merge of patch bumps when ci + build are green **and** a signature check passed |
@@ -79,7 +79,7 @@ matching change in the bundle schema / Shaker.
 
 | Item | Detail |
 |---|---|
-| 🚧 `image` | ✅ OCI archive of a built service (layers per unit, labels, contract user/command), Shaker or direct entrypoint, `FROM scratch` for static units, base layout support; run with docker (static nginx from scratch; Shaker mode on a bash base); ⬜ push to a registry, ⬜ multi-arch index, ⬜ Dockerfile output, ⬜ musl static build of the catalog |
+| 🚧 `image` | ✅ OCI archive of a built service (layers per unit, labels, contract user/command), Shaker or direct entrypoint, `FROM scratch` for static units, base layout support; run with docker (static nginx from scratch; Shaker mode on a bash base); ✅ push with `docker push` (verified on Nexus), ⬜ an `image --push` command, ⬜ multi-arch index, ⬜ Dockerfile output, ⬜ musl static build of the catalog |
 | 🚧 `package` | ✅ deb / rpm / apk via nfpm from `files.sha256`, naming templates, exact dependencies, conflicts, Shaker post-install, package signing; ✅ real nfpm 2.48 (catalog unit): deb extracted and `java` run, rpm headers and apk `.PKGINFO` checked, NiFi chain (803 MB deb, exact `Depends`, postinst) ; ⬜ installed with dpkg/rpm/apk on real hosts, ⬜ repository metadata (apt/createrepo/APKINDEX), ⬜ musl units for Alpine, ✅ nfpm as a catalog unit (`build --package nfpm`) |
 | ⬜ `k8s` | Helm/Kustomize skeleton from `rosetta.map` and `runtime.spec` (**contract**) |
 | ⬜ Release manifest | one signed index of all bundles/versions of a release, consumed by Shaker for multi-package `up` |
