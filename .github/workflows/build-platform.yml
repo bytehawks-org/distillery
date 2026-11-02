@@ -71,7 +71,7 @@ jobs:
             echo "| status | package | variant | version | recipe |"
             echo "|---|---|---|---|---|"
             jq -r '.[] | "| \(.status) | \(.package) | \(.variant) | \(.version) | `\(.recipe12)` |"' stale.json
-            [ "$(jq length stale.json)" = "0" ] && echo "| - | everything already in the store | | | |"
+            if [ "$(jq length stale.json)" = "0" ]; then echo "| - | everything already in the store | | | |"; fi      # not `[ ] && echo`: as the last command it would fail the step whenever something is stale
           } >> "$GITHUB_STEP_SUMMARY"
 
   libs:
