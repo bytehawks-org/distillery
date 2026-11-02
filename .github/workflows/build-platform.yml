@@ -71,7 +71,7 @@ jobs:
             echo "| status | package | variant | version | recipe |"
             echo "|---|---|---|---|---|"
             jq -r '.[] | "| \(.status) | \(.package) | \(.variant) | \(.version) | `\(.recipe12)` |"' stale.json
-            [ "$(jq length stale.json)" = "0" ] && echo "| - | everything already in the store | | | |"
+            if [ "$(jq length stale.json)" = "0" ]; then echo "| - | everything already in the store | | | |"; fi      # not `[ ] && echo`: as the last command it would fail the step whenever something is stale
           } >> "$GITHUB_STEP_SUMMARY"
 
   libs:
@@ -84,7 +84,15 @@ jobs:
       max-parallel: 1
       fail-fast: true
       matrix: ${{ fromJSON(needs.plan.outputs.libs) }}
-    container: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}      # build on the OLDEST glibc / musl you intend to support
+    # a job in a container runs `sh` by default, and the steps use bash (arrays, <<<): every builder image has it, the plain alpine one
+    # gets it in the first step (which says `shell: sh`)
+    defaults:
+      run:
+        shell: bash
+    # build on the OLDEST glibc / musl you intend to support
+    container:
+      image: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
+      options: --user root         # a builder image may run as an unprivileged user (builda-bar: bh); the jobs install into /opt/bytehawks
     steps:
       - name: Toolchain (glibc)
         if: inputs.libc == 'glibc'
@@ -157,7 +165,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.apps) }}
-    container: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
+    # a job in a container runs `sh` by default, and the steps use bash (arrays, <<<): every builder image has it, the plain alpine one
+    # gets it in the first step (which says `shell: sh`)
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
+      options: --user root         # a builder image may run as an unprivileged user (builda-bar: bh); the jobs install into /opt/bytehawks
     steps:
       - name: Toolchain (glibc)
         if: inputs.libc == 'glibc'
