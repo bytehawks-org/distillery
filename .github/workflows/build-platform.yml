@@ -84,6 +84,11 @@ jobs:
       max-parallel: 1
       fail-fast: true
       matrix: ${{ fromJSON(needs.plan.outputs.libs) }}
+    # a job in a container runs `sh` by default, and the steps use bash (arrays, <<<): every builder image has it, the plain alpine one
+    # gets it in the first step (which says `shell: sh`)
+    defaults:
+      run:
+        shell: bash
     # build on the OLDEST glibc / musl you intend to support
     container:
       image: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
@@ -160,6 +165,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.apps) }}
+    # a job in a container runs `sh` by default, and the steps use bash (arrays, <<<): every builder image has it, the plain alpine one
+    # gets it in the first step (which says `shell: sh`)
+    defaults:
+      run:
+        shell: bash
     container:
       image: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
       options: --user root         # a builder image may run as an unprivileged user (builda-bar: bh); the jobs install into /opt/bytehawks
