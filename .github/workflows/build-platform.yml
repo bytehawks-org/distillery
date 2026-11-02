@@ -84,7 +84,10 @@ jobs:
       max-parallel: 1
       fail-fast: true
       matrix: ${{ fromJSON(needs.plan.outputs.libs) }}
-    container: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}      # build on the OLDEST glibc / musl you intend to support
+    # build on the OLDEST glibc / musl you intend to support
+    container:
+      image: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
+      options: --user root         # a builder image may run as an unprivileged user (builda-bar: bh); the jobs install into /opt/bytehawks
     steps:
       - name: Toolchain (glibc)
         if: inputs.libc == 'glibc'
@@ -157,7 +160,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.apps) }}
-    container: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
+    container:
+      image: ${{ inputs.libc == 'musl' && (vars.BH_BUILDER_IMAGE_MUSL || 'alpine:3.20') || (vars.BH_BUILDER_IMAGE || 'debian:12') }}
+      options: --user root         # a builder image may run as an unprivileged user (builda-bar: bh); the jobs install into /opt/bytehawks
     steps:
       - name: Toolchain (glibc)
         if: inputs.libc == 'glibc'
