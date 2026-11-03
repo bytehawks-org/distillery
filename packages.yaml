@@ -44,8 +44,7 @@ package:
           -static \
           -fPIC \
           no-shared \
-          no-tests \
-          no-docs
+          no-tests
       make: make -j{{ jobs }}
       install: make install_sw install_ssldirs
     upstream:
