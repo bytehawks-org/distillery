@@ -1753,13 +1753,13 @@ package:
           file_key: storage.log_dir
           cli: --log-dir
           description: Directory of the log files (the console log is always on)
-        - name: BH_RABBITMQ_CONFIG_DIR
+        - name: BH_RABBITMQ_CONFIG_FILE
           type: path
-          default: "{{ prefix }}/conf"
+          default: "{{ prefix }}/conf/rabbitmq.conf"
           native_env: RABBITMQ_CONFIG_FILES
-          file_key: storage.config_dir
-          cli: --config-dir
-          description: Directory holding the rendered rabbitmq.conf
+          file_key: storage.config_file
+          cli: --config-file
+          description: "Rendered rabbitmq.conf (the file, not its directory: enabled_plugins lives beside it and is not Cuttlefish)"
         - name: BH_RABBITMQ_ENABLED_PLUGINS_FILE
           type: path
           default: "{{ prefix }}/conf/enabled_plugins"
@@ -1767,6 +1767,13 @@ package:
           file_key: storage.plugins_file
           cli: --enabled-plugins-file
           description: Rendered list of enabled plugins
+        - name: BH_RABBITMQ_HOME
+          type: path
+          default: "{{ prefix }}/data"
+          native_env: HOME
+          file_key: runtime.home
+          cli: --home
+          description: HOME of the broker; the Erlang cookie (.erlang.cookie) is created here, so it must be writable and persistent
         - name: BH_RABBITMQ_ERLANG_HOME
           type: path
           default: "{{ config.root }}/erlang"
