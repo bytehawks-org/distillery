@@ -14,8 +14,8 @@ jobs:
       matrix:
         python: ["3.9", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -r scripts/requirements.txt
@@ -37,11 +37,11 @@ jobs:
 
   test-musl:
     # the tool itself must run on Alpine: it is what builds the musl artifacts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: alpine:3.20
     steps:
       - run: apk add --no-cache bash git gnupg python3 py3-pip py3-virtualenv
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           python3 -m venv /opt/venv
           /opt/venv/bin/pip install -r scripts/requirements.txt
@@ -49,7 +49,7 @@ jobs:
         shell: bash
 
   workflows:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: pip install actionlint-py && actionlint

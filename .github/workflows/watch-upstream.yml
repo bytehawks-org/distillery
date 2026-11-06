@@ -31,13 +31,13 @@ concurrency:
 
 jobs:
   detect:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       packages: ${{ steps.find.outputs.packages }}
       any: ${{ steps.find.outputs.any }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r scripts/requirements.txt
@@ -63,7 +63,7 @@ jobs:
   bump:
     needs: detect
     if: needs.detect.outputs.any == 'true' && !inputs.dry_run
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -74,8 +74,8 @@ jobs:
       # GitHub App token) if you prefer the normal pull_request triggers.
       PR_TOKEN: ${{ secrets.BH_BOT_TOKEN || github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r scripts/requirements.txt
@@ -104,7 +104,7 @@ jobs:
 
       - name: Open or update the pull request
         id: cpr
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ env.PR_TOKEN }}
           branch: bot/upstream-${{ matrix.package }}

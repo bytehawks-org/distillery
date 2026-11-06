@@ -35,7 +35,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       libs: ${{ steps.stale.outputs.libs }}
       apps: ${{ steps.stale.outputs.apps }}
@@ -44,8 +44,8 @@ jobs:
       count: ${{ steps.stale.outputs.count }}
       pattern: ${{ steps.stale.outputs.pattern }}      # matches this holder's artifact names
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r scripts/requirements.txt
@@ -77,7 +77,7 @@ jobs:
   libs:
     needs: plan
     if: needs.plan.outputs.has_libs == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # one at a time and in plan order (dependencies first): a library may need the one built just before it,
     # which it restores from the artifact the previous job uploaded
     strategy:
@@ -108,7 +108,7 @@ jobs:
         run: |
           if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v bash >/dev/null; then echo "toolchain already present"; exit 0; fi
           apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Python environment
         run: |
           [ -x /opt/venv/bin/python ] || python3 -m venv /opt/venv           # a builder image has it, with the requirements installed
@@ -147,7 +147,7 @@ jobs:
         if: always()
         run: rm -rf "${RUNNER_TEMP}/gnupg" "${RUNNER_TEMP}/gpg-pass"
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: dist/${{ matrix.name }}.*
@@ -161,7 +161,7 @@ jobs:
     needs: [plan, libs]
     # run when libs succeeded or was skipped, never after a failure/cancel
     if: ${{ !cancelled() && !failure() && needs.plan.outputs.has_apps == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.apps) }}
@@ -188,7 +188,7 @@ jobs:
         run: |
           if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v bash >/dev/null; then echo "toolchain already present"; exit 0; fi
           apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Python environment
         run: |
           [ -x /opt/venv/bin/python ] || python3 -m venv /opt/venv           # a builder image has it, with the requirements installed
@@ -227,7 +227,7 @@ jobs:
         if: always()
         run: rm -rf "${RUNNER_TEMP}/gnupg" "${RUNNER_TEMP}/gpg-pass"
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: dist/${{ matrix.name }}.*
@@ -240,14 +240,14 @@ jobs:
   publish-nexus:
     needs: [plan, libs, apps]
     if: ${{ !cancelled() && !failure() && vars.NEXUS_URL != '' && (needs.libs.result == 'success' || needs.apps.result == 'success') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r scripts/requirements.txt
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: ${{ needs.plan.outputs.pattern }}
           path: dist
