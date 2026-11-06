@@ -972,10 +972,10 @@ package:
       LDFLAGS: "-L{{ deps_prefix }}/lib -L{{ deps_prefix }}/lib64 -Wl,-rpath,{{ prefix }}/lib"
     commands:
       make: |
-        make -j{{ jobs }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no \
+        make -j{{ jobs }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SQLITE=no \
           LIBMOSQ_COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto'
       install: |
-        make install prefix={{ prefix }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no \
+        make install prefix={{ prefix }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SQLITE=no \
           LIBMOSQ_COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto'
     # Static: libmosquitto as an archive (the clients link it), the broker and the tools without a dynamic loader. The shared
     # objects the Makefile builds anyway (libcommon) cannot be linked with -static, so only the final links get it. Plugins
@@ -984,7 +984,7 @@ package:
       binaries: [sbin/mosquitto, bin/mosquitto_pub, bin/mosquitto_sub, bin/mosquitto_rr, bin/mosquitto_passwd]
       commands:
         make: |
-          OPTS="WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SHARED_LIBRARIES=no WITH_STATIC_LIBRARIES=yes"
+          OPTS="WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SQLITE=no WITH_SHARED_LIBRARIES=no WITH_STATIC_LIBRARIES=yes"
           COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto -ldl -pthread'
           make -j{{ jobs }} -C libcommon $OPTS
           make -j{{ jobs }} -C lib $OPTS
@@ -992,7 +992,7 @@ package:
             make -j{{ jobs }} -C $d $OPTS LIBMOSQ_COMMON="$COMMON" LDFLAGS="-L{{ deps_prefix }}/lib -L{{ deps_prefix }}/lib64 -static"
           done
         install: |
-          OPTS="WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SHARED_LIBRARIES=no WITH_STATIC_LIBRARIES=yes"
+          OPTS="WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SQLITE=no WITH_SHARED_LIBRARIES=no WITH_STATIC_LIBRARIES=yes"
           COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto -ldl -pthread'
           for d in lib src client apps/mosquitto_passwd; do
             make -C $d install prefix={{ prefix }} $OPTS LIBMOSQ_COMMON="$COMMON" LDFLAGS="-L{{ deps_prefix }}/lib -L{{ deps_prefix }}/lib64 -static"
