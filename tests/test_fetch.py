@@ -43,6 +43,19 @@ class FetchTests(unittest.TestCase):
             fetch.extract(t / "src.tgz", t / "out")
             self.assertEqual((t / "out" / "sub" / "a.txt").read_text(), "hello")
 
+    def test_extract_keeps_hard_links_after_stripping_the_top_directory(self):
+        with TempDir() as t:
+            with tarfile.open(t / "hl.tgz", "w:gz") as archive:
+                info = tarfile.TarInfo("top/escript/real")
+                info.size = 2
+                archive.addfile(info, io.BytesIO(b"hi"))
+                link = tarfile.TarInfo("top/sbin/tool")
+                link.type = tarfile.LNKTYPE
+                link.linkname = "top/escript/real"
+                archive.addfile(link)
+            fetch.extract(t / "hl.tgz", t / "out")
+            self.assertEqual((t / "out" / "sbin" / "tool").read_text(), "hi")
+
     def test_extract_rejects_traversal_and_escaping_links(self):
         with TempDir() as t:
             with tarfile.open(t / "evil.tgz", "w:gz") as archive:
