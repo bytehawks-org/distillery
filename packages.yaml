@@ -972,9 +972,12 @@ package:
       LDFLAGS: "-L{{ deps_prefix }}/lib -L{{ deps_prefix }}/lib64 -Wl,-rpath,{{ prefix }}/lib"
     commands:
       make: |
+        # persist-sqlite is optional and needs sqlite3.h; its Makefile installs the .so even with WITH_SQLITE=no
+        sed -i '/^[[:space:]]*persist-sqlite/d' plugins/Makefile
         make -j{{ jobs }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SQLITE=no \
           LIBMOSQ_COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto'
       install: |
+        sed -i '/^[[:space:]]*persist-sqlite/d' plugins/Makefile
         make install prefix={{ prefix }} WITH_DOCS=no WITH_WEBSOCKETS=no WITH_SYSTEMD=no WITH_TLS=yes WITH_EDITLINE=no WITH_HTTP_API=no WITH_SQLITE=no \
           LIBMOSQ_COMMON='-Wl,--whole-archive ${R}/libcommon/libmosquitto_common.a -Wl,--no-whole-archive -lcjson -lssl -lcrypto'
     # Static: libmosquitto as an archive (the clients link it), the broker and the tools without a dynamic loader. The shared
