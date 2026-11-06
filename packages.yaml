@@ -1499,6 +1499,9 @@ package:
           --without-icu \
           --with-includes={{ deps_prefix }}/include \
           --with-libraries={{ deps_prefix }}/lib:{{ deps_prefix }}/lib64
+        # libpq links the static OpenSSL, whose own abort paths reference exit() on musl: upstream's "libpq must not call exit"
+        # check explicitly does not apply to libraries provided by static archives, so it is switched off here.
+        sed -i '/^libpq-refs-stamp:/,/touch/ s/| grep exit; then/| grep -x NO_SUCH_SYMBOL; then/' src/interfaces/libpq/Makefile
       make: make -j{{ jobs }} world-bin
       install: make install-world-bin
     runtime:
