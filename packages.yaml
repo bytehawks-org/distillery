@@ -1469,6 +1469,323 @@ package:
     tags:
       - application
 
+  # PostgreSQL from the release tarball (bzip2). No ICU and no readline: the builtin C.UTF-8 locale provider (17+) needs neither,
+  # and psql loses only line editing. Upstream publishes a .sha256 next to the tarball and tags every release as REL_<major>_<minor>.
+  postgres:
+    variant:
+      - name: stable
+        major_version: 18
+        patch_version: 6
+        full_version: 18.6
+        sha256: 555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f
+    license: PostgreSQL
+    website: https://www.postgresql.org/
+    depends_on:
+      - {name: openssl, variant: stable}
+      - zlib
+    git:
+      repo: https://github.com/postgres/postgres
+      release_download_url_template: "https://ftp.postgresql.org/pub/source/v{{ full_version }}/postgresql-{{ full_version }}.tar.bz2"
+    upstream:
+      tag_regex: '^REL_(\d+)_(\d+)$'
+      checksum_url_template: "{{ git.release_download_url_template }}.sha256"
+    commands:
+      configure: |
+        ./configure \
+          --prefix={{ prefix }} \
+          --with-openssl \
+          --with-zlib \
+          --without-readline \
+          --without-icu \
+          --with-includes={{ deps_prefix }}/include \
+          --with-libraries={{ deps_prefix }}/lib:{{ deps_prefix }}/lib64
+        # libpq links the static OpenSSL, whose own abort paths reference exit() on musl: upstream's "libpq must not call exit"
+        # check explicitly does not apply to libraries provided by static archives, so it is switched off here.
+        sed -i '/^libpq-refs-stamp:/,/touch/ s/| grep exit; then/| grep -x NO_SUCH_SYMBOL; then/' src/interfaces/libpq/Makefile
+      make: make -j{{ jobs }} world-bin
+      install: make install-world-bin
+    runtime:
+      user:
+        name: postgres
+        uid: 1006
+        gid: 0
+        home: "{{ prefix }}"
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1006:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1006:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1006:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      hooks:
+        first_init: "{{ prefix }}/hooks/init.d"
+      templates:
+        - {src: postgresql.conf.tmpl, dest: "{{ prefix }}/conf/postgresql.conf", mode: "0640"}
+        - {src: pg_hba.conf.tmpl, dest: "{{ prefix }}/conf/pg_hba.conf", mode: "0640"}
+      run:
+        command:
+          - "{{ prefix }}/bin/postgres"
+          - -D
+          - "{{ prefix }}/data/pgdata"
+          - -c
+          - "config_file={{ prefix }}/conf/postgresql.conf"
+        stop_signal: INT                        # fast shutdown; TERM would wait for every client to leave
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_POSTGRES_PORT}"}
+      env:
+        - name: BH_POSTGRES_PORT
+          type: port
+          default: 5432
+          aliases: [POSTGRESQL_PORT_NUMBER, PGPORT]
+          file_key: server.port
+          cli: --port
+          description: TCP port
+        - name: BH_POSTGRES_LISTEN_ADDRESSES
+          type: string
+          default: "*"
+          aliases: [POSTGRESQL_LISTEN_ADDRESSES]
+          file_key: server.listen_addresses
+          cli: --listen-addresses
+          description: Comma separated interfaces to listen on ('*' = all)
+        - name: BH_POSTGRES_USER
+          type: string
+          default: postgres
+          aliases: [POSTGRESQL_USERNAME, POSTGRES_USER]
+          file_key: auth.username
+          cli: --username
+          description: Superuser created by initdb (first start of a data volume only)
+        - name: BH_POSTGRES_PASSWORD
+          type: secret
+          required: true
+          aliases: [POSTGRESQL_PASSWORD, POSTGRES_PASSWORD]
+          file_key: auth.password
+          cli: --password
+          description: Superuser password (first start of a data volume only; later changes are made with ALTER ROLE)
+        - name: BH_POSTGRES_DB
+          type: string
+          default: postgres
+          aliases: [POSTGRESQL_DATABASE, POSTGRES_DB]
+          file_key: auth.database
+          cli: --database
+          description: Database created at the first start besides the default ones
+        - name: BH_POSTGRES_MAX_CONNECTIONS
+          type: uint
+          default: 100
+          aliases: [POSTGRESQL_MAX_CONNECTIONS]
+          file_key: tuning.max_connections
+          cli: --max-connections
+          description: Maximum concurrent connections
+        - name: BH_POSTGRES_SHARED_BUFFERS
+          type: string
+          default: 128MB
+          aliases: [POSTGRESQL_SHARED_BUFFERS]
+          file_key: tuning.shared_buffers
+          cli: --shared-buffers
+          description: Memory for shared buffers (about 25% of the RAM for a dedicated server)
+        - name: BH_POSTGRES_HBA_ADDRESS
+          type: string
+          default: 0.0.0.0/0
+          file_key: auth.hba_address
+          cli: --hba-address
+          description: Client network allowed to connect over TCP with a password (CIDR). Local sockets always require a password too
+        - name: BH_POSTGRES_SSL_CERT
+          type: path
+          file_key: tls.cert
+          cli: --ssl-cert
+          description: Server certificate (PEM); TLS is enabled when both certificate and key are set
+        - name: BH_POSTGRES_SSL_KEY
+          type: path
+          file_key: tls.key
+          cli: --ssl-key
+          description: Server private key (PEM, mode 0600 or owned by the service user)
+      requires: [openssl, zlib]
+    tags:
+      - application
+
+  # Erlang/OTP from the source tarball, built for servers: no GUI (wx), Java, ODBC, debugger or observer, no termcap (the shell
+  # of a daemon needs no line editing). OpenSSL is linked statically from the openssl unit. Tags are OTP-<major>.<minor>[.<patch>...].
+  erlang:
+    variant:
+      - name: stable
+        major_version: 28
+        patch_version: 5
+        full_version: 28.5.0.8
+        sha256: 8a696e15bcbe5d57197b1f4c03c92d415f9fd9af70f9222a05911c8a5463cba6
+    license: Apache-2.0
+    website: https://www.erlang.org/
+    depends_on:
+      - {name: openssl, variant: stable}
+    git:
+      repo: https://github.com/erlang/otp
+      release_download_url_template: "{{ git.repo }}/releases/download/OTP-{{ full_version }}/otp_src_{{ full_version }}.tar.gz"
+    upstream:
+      tag_regex: '^OTP-(\d+\.\d+(?:\.\d+)*)$'
+    commands:
+      configure: |
+        ./configure \
+          --prefix={{ prefix }} \
+          --with-ssl={{ deps_prefix }} \
+          --disable-dynamic-ssl-lib \
+          --without-termcap \
+          --without-wx \
+          --without-javac \
+          --without-odbc \
+          --without-debugger \
+          --without-observer \
+          --without-et
+      make: make -j{{ jobs }}
+      install: make install
+    tags:
+      - application
+
+  # RabbitMQ from the generic-unix archive (Erlang beam files, platform independent): nothing is compiled. The scripts run `erl`
+  # found through PATH, so the service starts through a small wrapper that puts BH_RABBITMQ_ERLANG_HOME/bin first.
+  rabbitmq:
+    variant:
+      - name: stable
+        major_version: 4.4
+        patch_version: 0
+        full_version: 4.4.0
+        sha256: 68c22d5dafa15c0911463aeca73c362d638cd6fb8e407ad39512959c6cc37f0f
+    license: MPL-2.0
+    website: https://www.rabbitmq.com/
+    depends_on:
+      - {name: erlang, variant: stable, tag: application}
+    git:
+      repo: https://github.com/rabbitmq/rabbitmq-server
+      release_download_url_template: "{{ git.repo }}/releases/download/v{{ full_version }}/rabbitmq-server-generic-unix-{{ full_version }}.tar.xz"
+    upstream:
+      tag_regex: '^v(\d+\.\d+\.\d+)$'
+    commands:
+      install: |
+        mkdir -p {{ prefix }}
+        cp -a . {{ prefix }}/
+      post: |
+        mkdir -p {{ prefix }}/bin
+        cat > {{ prefix }}/bin/rabbitmq-run <<'WRAPPER'
+        #!/bin/sh
+        # Starts the broker in the foreground with the Erlang of BH_RABBITMQ_ERLANG_HOME.
+        PATH="${BH_RABBITMQ_ERLANG_HOME:?}/bin:${PATH}"
+        export PATH
+        exec "$(dirname "$0")/../sbin/rabbitmq-server" "$@"
+        WRAPPER
+        chmod 0755 {{ prefix }}/bin/rabbitmq-run
+    runtime:
+      user:
+        name: rabbitmq
+        uid: 1007
+        gid: 0
+        home: "{{ prefix }}/data"                 # the Erlang cookie lives in $HOME: it must be persistent and writable
+      dirs:
+        - {path: "{{ prefix }}/conf", mode: "g+rwX", owner: "1007:0"}
+        - {path: "{{ prefix }}/data", mode: "g+rwX", owner: "1007:0"}
+        - {path: "{{ prefix }}/logs", mode: "g+rwX", owner: "1007:0"}
+        - {path: "{{ prefix }}/run", mode: "g+rwX", owner: "1007:0"}
+      persistence:
+        - {path: "{{ prefix }}/data", volume: /bytehawks/data}
+      templates:
+        - {src: rabbitmq.conf.tmpl, dest: "{{ prefix }}/conf/rabbitmq.conf", mode: "0640"}
+        - {src: enabled_plugins.tmpl, dest: "{{ prefix }}/conf/enabled_plugins", mode: "0640"}
+      run:
+        command:
+          - "{{ prefix }}/bin/rabbitmq-run"
+        stop_signal: TERM
+      healthcheck:
+        tcp: {host: 127.0.0.1, port: "${BH_RABBITMQ_PORT}"}
+      env:
+        - name: BH_RABBITMQ_PORT
+          type: port
+          default: 5672
+          aliases: [RABBITMQ_NODE_PORT_NUMBER, RABBITMQ_NODE_PORT]
+          file_key: amqp.port
+          cli: --port
+          description: AMQP 0-9-1 / 1.0 listener port
+        - name: BH_RABBITMQ_MANAGEMENT_PORT
+          type: port
+          default: 15672
+          aliases: [RABBITMQ_MANAGEMENT_PORT_NUMBER]
+          file_key: management.port
+          cli: --management-port
+          description: HTTP port of the management UI and API (needs the rabbitmq_management plugin)
+        - name: BH_RABBITMQ_USER
+          type: string
+          default: admin
+          aliases: [RABBITMQ_USERNAME, RABBITMQ_DEFAULT_USER]
+          file_key: auth.username
+          cli: --username
+          description: User created at the first start of a data volume (the built-in guest user is not created)
+        - name: BH_RABBITMQ_PASSWORD
+          type: secret
+          required: true
+          aliases: [RABBITMQ_PASSWORD, RABBITMQ_DEFAULT_PASS]
+          file_key: auth.password
+          cli: --password
+          description: Password of that user (first start of a data volume only; later changes use rabbitmqctl)
+        - name: BH_RABBITMQ_VHOST
+          type: string
+          default: /
+          aliases: [RABBITMQ_VHOST, RABBITMQ_DEFAULT_VHOST]
+          file_key: auth.vhost
+          cli: --vhost
+          description: Default virtual host (first start of a data volume only)
+        - name: BH_RABBITMQ_NODENAME
+          type: string
+          default: rabbit@localhost
+          aliases: [RABBITMQ_NODE_NAME]
+          native_env: RABBITMQ_NODENAME
+          file_key: node.name
+          cli: --nodename
+          description: Erlang node name; keep it stable, the data directory is keyed on it
+        - name: BH_RABBITMQ_PLUGINS
+          type: string
+          default: rabbitmq_management,rabbitmq_prometheus
+          aliases: [RABBITMQ_PLUGINS]
+          file_key: node.plugins
+          cli: --plugins
+          description: Comma separated plugins enabled at start
+        - name: BH_RABBITMQ_DATA_DIR
+          type: path
+          default: "{{ prefix }}/data/mnesia"
+          native_env: RABBITMQ_MNESIA_BASE
+          file_key: storage.data_dir
+          cli: --data-dir
+          description: Message store and metadata (mount a volume under data/)
+        - name: BH_RABBITMQ_LOG_DIR
+          type: path
+          default: "{{ prefix }}/logs"
+          native_env: RABBITMQ_LOG_BASE
+          file_key: storage.log_dir
+          cli: --log-dir
+          description: Directory of the log files (the console log is always on)
+        - name: BH_RABBITMQ_CONFIG_FILE
+          type: path
+          default: "{{ prefix }}/conf/rabbitmq.conf"
+          native_env: RABBITMQ_CONFIG_FILES
+          file_key: storage.config_file
+          cli: --config-file
+          description: "Rendered rabbitmq.conf (the file, not its directory: enabled_plugins lives beside it and is not Cuttlefish)"
+        - name: BH_RABBITMQ_ENABLED_PLUGINS_FILE
+          type: path
+          default: "{{ prefix }}/conf/enabled_plugins"
+          native_env: RABBITMQ_ENABLED_PLUGINS_FILE
+          file_key: storage.plugins_file
+          cli: --enabled-plugins-file
+          description: Rendered list of enabled plugins
+        - name: BH_RABBITMQ_HOME
+          type: path
+          default: "{{ prefix }}/data"
+          native_env: HOME
+          file_key: runtime.home
+          cli: --home
+          description: HOME of the broker; the Erlang cookie (.erlang.cookie) is created here, so it must be writable and persistent
+        - name: BH_RABBITMQ_ERLANG_HOME
+          type: path
+          default: "{{ config.root }}/erlang"
+          file_key: runtime.erlang_home
+          cli: --erlang-home
+          description: Erlang/OTP installation used by the broker (28 or later)
+    tags:
+      - application
+
   # The tool `autobuilder.py package` uses to write deb/rpm/apk. Prebuilt Go binary; the archive has no top directory.
   # Upstream publishes one checksums.txt for all files, so no checksum_url_template (the pin is still sha256 per arch).
   nfpm:

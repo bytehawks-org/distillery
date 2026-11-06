@@ -163,6 +163,12 @@ def _extract_tar(tarball, dest, strip_components):
                 if not parts:
                     continue
                 member.name = "/".join(parts)
+                if member.islnk():
+                    # a hard link names another member by its archive path: it loses the same leading components
+                    link_parts = PurePosixPath(member.linkname).parts[strip_components:]
+                    if not link_parts:
+                        raise FetchError(f"unsafe link in archive: {member.name} -> {member.linkname}")
+                    member.linkname = "/".join(link_parts)
                 if member.issym() or member.islnk():
                     _safe_link(member.name, member.linkname, member.issym())
                 if hasattr(tarfile, "data_filter"):

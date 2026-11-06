@@ -18,6 +18,12 @@ class UpstreamTests(unittest.TestCase):
         found = upstream.versions_from_tags(tags, r"^v(\d+\.\d+\.\d+)$")
         self.assertEqual([v for v, _ in found], ["1.3.0", "1.2.10", "1.2.9"])
 
+    def test_versions_from_tags_joins_several_groups(self):
+        found = upstream.versions_from_tags(["REL_18_6", "REL_18_10", "REL_17_9", "REL_18_BETA1", "REL_18_RC1"], r"^REL_(\d+)_(\d+)$")
+        self.assertEqual([(v, t) for v, t in found], [("18.10", "REL_18_10"), ("18.6", "REL_18_6"), ("17.9", "REL_17_9")])
+        found = upstream.versions_from_tags(["OTP-28.5.0.8", "OTP-28.5.1", "OTP-28.5"], r"^OTP-(\d+\.\d+(?:\.\d+)*)$")
+        self.assertEqual([v for v, _ in found], ["28.5.1", "28.5.0.8", "28.5"])
+
     def test_check_unit_against_a_real_git_repository(self):
         with TempDir() as t:
             repo = git_repo_with_tags(t / "up", ["rel-1.2.3", "rel-1.2.4", "rel-1.2.5", "rel-1.3.0", "rel-2.0.0", "rel-1.2.6-rc1"])

@@ -1,0 +1,13 @@
+# Rendered by Shaker at every start from the BH_POSTGRES_* parameters. Do not edit: change the parameters.
+listen_addresses = '{{ BH_POSTGRES_LISTEN_ADDRESSES }}'
+port = {{ BH_POSTGRES_PORT }}
+max_connections = {{ BH_POSTGRES_MAX_CONNECTIONS }}
+shared_buffers = {{ BH_POSTGRES_SHARED_BUFFERS }}
+unix_socket_directories = '{{ BH_PKG_PREFIX }}/run'
+hba_file = '{{ BH_PKG_PREFIX }}/conf/pg_hba.conf'
+password_encryption = scram-sha-256
+log_destination = 'stderr'
+logging_collector = off
+{{? BH_POSTGRES_SSL_CERT }}ssl = on
+{{? BH_POSTGRES_SSL_CERT }}ssl_cert_file = '{{ BH_POSTGRES_SSL_CERT }}'
+{{? BH_POSTGRES_SSL_CERT }}ssl_key_file = '{{ BH_POSTGRES_SSL_KEY }}'

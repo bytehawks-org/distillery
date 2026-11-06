@@ -1,0 +1,4 @@
+# Rendered by Shaker. Every connection needs a password (SCRAM).
+local   all   all                              scram-sha-256
+host    all   all   {{ BH_POSTGRES_HBA_ADDRESS }}   scram-sha-256
+host    all   all   ::1/128                    scram-sha-256

@@ -100,14 +100,14 @@ jobs:
         run: |
           if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v git >/dev/null; then echo "toolchain already present"; exit 0; fi
           apt-get update
-          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
+          apt-get install -y --no-install-recommends build-essential perl flex bison python3 python3-venv git curl ca-certificates jq gnupg
       - name: Toolchain (musl)
         if: inputs.libc == 'musl'
         shell: sh
         # nothing to install in a builder image (docker/builder-musl.Dockerfile)
         run: |
           if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v bash >/dev/null; then echo "toolchain already present"; exit 0; fi
-          apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
+          apk add --no-cache bash build-base linux-headers perl flex bison python3 py3-virtualenv git curl ca-certificates jq gnupg tar
       - uses: actions/checkout@v7
       - name: Python environment
         run: |
@@ -180,14 +180,14 @@ jobs:
         run: |
           if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v git >/dev/null; then echo "toolchain already present"; exit 0; fi
           apt-get update
-          apt-get install -y --no-install-recommends build-essential perl python3 python3-venv git curl ca-certificates jq gnupg
+          apt-get install -y --no-install-recommends build-essential perl flex bison python3 python3-venv git curl ca-certificates jq gnupg
       - name: Toolchain (musl)
         if: inputs.libc == 'musl'
         shell: sh
         # nothing to install in a builder image (docker/builder-musl.Dockerfile)
         run: |
           if command -v gcc >/dev/null && command -v gpg >/dev/null && command -v bash >/dev/null; then echo "toolchain already present"; exit 0; fi
-          apk add --no-cache bash build-base linux-headers perl python3 py3-virtualenv git curl ca-certificates jq gnupg tar
+          apk add --no-cache bash build-base linux-headers perl flex bison python3 py3-virtualenv git curl ca-certificates jq gnupg tar
       - uses: actions/checkout@v7
       - name: Python environment
         run: |

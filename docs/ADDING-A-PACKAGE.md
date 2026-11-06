@@ -132,6 +132,19 @@ shaker run valkey --port=6380 --daemon && shaker verify valkey --port=6380 && sh
 ```
 Iterate on `runtime:`/templates without rebuilding: `autobuilder.py bundle --package valkey --root /opt/bhtest`.
 
+## Catalog notes: postgres, erlang, rabbitmq
+
+* **postgres** (source tarball, `bz2`): built without ICU and readline (`--locale-provider=builtin`, psql without line editing). PostgreSQL 18 needs
+  `flex` and `bison` at build time (the release tarball no longer ships the generated scanners): the builder images and the toolchain step of the
+  workflow install them. `initdb` runs once per data volume from a `first_init` hook (`assets/postgres/hooks/first_init/`); the configuration is
+  rendered from `BH_POSTGRES_*` at every start, every connection needs a SCRAM password. Upstream tags are `REL_18_6`: `upstream.tag_regex` may have
+  several groups, they are joined with `.`.
+* **erlang** (source tarball): server-oriented build, OpenSSL linked statically from the `openssl` unit.
+* **rabbitmq** (generic-unix archive, nothing compiled): depends on `erlang`; the service starts through `bin/rabbitmq-run`, which puts
+  `BH_RABBITMQ_ERLANG_HOME/bin` first in `PATH`. `HOME` is the persistent data directory because the Erlang cookie lives there. The archive holds
+  hard links; they are re-pointed when the leading directory is stripped.
+* `valkey` was already in the catalog.
+
 ### Binary repack (prebuilt distributions, e.g. Java)
 
 When upstream ships a ready-to-run distribution, skip `configure`/`make`: declare only `install`

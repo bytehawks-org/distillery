@@ -193,7 +193,7 @@ runtime:
 
 | Key | Meaning |
 |---|---|
-| `user` | service account; `gid: 0` = OpenShift/arbitrary-uid convention. Give every service of the catalog **its own uid** (nginx 1001, nifi 1002, valkey 1003, prometheus 1004, mosquitto 1005): services installed on the same host cannot share one |
+| `user` | service account; `gid: 0` = OpenShift/arbitrary-uid convention. Give every service of the catalog **its own uid** (nginx 1001, nifi 1002, valkey 1003, prometheus 1004, mosquitto 1005, postgres 1006, rabbitmq 1007): services installed on the same host cannot share one |
 | `dirs` | created by `shaker install`; `owner` `uid:gid` recursive; numeric `mode` = directory only, symbolic (`g+rwX`) = recursive |
 | `persistence` | `path` inside the image → `volume` mount; seeded on first use then symlinked |
 | `templates` | `src` relative to `assets/<package>/`, rendered at `shaker init` with the parameters; `mode` of the result |

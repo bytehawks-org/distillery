@@ -6,6 +6,7 @@ A package declares where new versions are announced:
       type: git-tags                       # default; the only type today
       repo: https://github.com/openssl/openssl      # default: git.repo
       tag_regex: '^openssl-(\\d+\\.\\d+\\.\\d+)$'     # group 1 = version; excludes pre-releases by construction
+                                           # several groups are joined with "." ('^REL_(\\d+)_(\\d+)$' reads REL_18_6 as 18.6)
       checksum_url_template: "{{ git.release_download_url_template }}.sha256"   # optional cross-check at bump time
 
 and each variant says which series it follows (`track`, default: its `major_version`):
@@ -57,8 +58,9 @@ def versions_from_tags(tags, tag_regex):
     found = []
     for tag in tags:
         match = pattern.match(tag)
-        if match and parse_version(match.group(1)):
-            found.append((match.group(1), tag))
+        version = ".".join(match.groups()) if match else None
+        if version and parse_version(version):
+            found.append((version, tag))
     return sorted(found, key=lambda item: parse_version(item[0]), reverse=True)
 
 
