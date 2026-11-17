@@ -1643,9 +1643,9 @@ package:
     variant:
       - name: stable
         major_version: 4.4
-        patch_version: 0
-        full_version: 4.4.0
-        sha256: 68c22d5dafa15c0911463aeca73c362d638cd6fb8e407ad39512959c6cc37f0f
+        patch_version: 1
+        full_version: 4.4.1
+        sha256: 667c652c1cb272c02f8a25b1ef32e981661f358b399a9d5c227982cc2101390f
     license: MPL-2.0
     website: https://www.rabbitmq.com/
     depends_on:
