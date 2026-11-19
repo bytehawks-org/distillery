@@ -434,9 +434,9 @@ package:
     variant:
       - name: stable
         major_version: 9.1
-        patch_version: 3
-        full_version: 9.1.3
-        commit: 29173b67508b2de4c0f0ed551f3b47cf19fc3ca8
+        patch_version: 4
+        full_version: 9.1.4
+        commit: 8efb5bb3dd3b69f707777352a105bbea911affd3
     license: BSD-3-Clause
     website: https://valkey.io/
     depends_on:
